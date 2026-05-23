@@ -1,0 +1,40 @@
+{
+  "agents": {
+    "toru": {
+      "created_at": "2026-05-23T14:42:10.971Z",
+      "persistent_name": "Toru",
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)",
+      "status": "active"
+    },
+    "cinnamon": {
+      "created_at": "2026-05-23T14:42:10.971Z",
+      "persistent_name": "Cinnamon",
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)",
+      "status": "active"
+    },
+    "malta": {
+      "created_at": "2026-05-23T14:42:10.971Z",
+      "persistent_name": "Malta",
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)",
+      "status": "active"
+    },
+    "creta": {
+      "created_at": "2026-05-23T14:42:10.971Z",
+      "persistent_name": "Creta",
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)",
+      "status": "active"
+    },
+    "scribe": {
+      "created_at": "2026-05-23T14:42:10.971Z",
+      "persistent_name": "Scribe",
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)",
+      "status": "active"
+    },
+    "ralph": {
+      "created_at": "2026-05-23T14:42:10.971Z",
+      "persistent_name": "Ralph",
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)",
+      "status": "active"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "assignment_cast_snapshots": {
+    "repl-cast-2026-05-23T14:42:10.971Z": {
+      "created_at": "2026-05-23T14:42:10.971Z",
+      "agents": [
+        "toru",
+        "cinnamon",
+        "malta",
+        "creta",
+        "scribe",
+        "ralph"
+      ],
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)"
+    }
+  },
+  "universe_usage_history": [
+    {
+      "universe": "The Wind-Up Bird Chronicle (Haruki Murakami)",
+      "used_at": "2026-05-23T14:42:10.971Z"
+    }
+  ]
+}
