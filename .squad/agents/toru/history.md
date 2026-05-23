@@ -15,6 +15,37 @@
 
 ## Learnings
 
+### 2026-05-23 — Azure Bicep Infrastructure Templates Created
+
+**Task:** Create complete Azure Bicep IaC in `infra/` for the OutdoorsShop dev environment.
+
+**Files created:**
+- `infra/main.bicep` — orchestrator; 6 modules wired with implicit dependency chain
+- `infra/parameters/dev.bicepparam` — non-sensitive dev params (`using '../main.bicep'`)
+- `infra/modules/monitoring.bicep` — App Insights + Log Analytics workspace
+- `infra/modules/sql.bicep` — SQL Server + Basic-tier Database; `@secure()` output for conn string
+- `infra/modules/storage.bicep` — Storage Account (LRS/StorageV2) + 3 containers; `@secure()` output
+- `infra/modules/appservice.bicep` — App Service Plan (B1/Linux) + Web App (.NET 10); KV refs in app settings
+- `infra/modules/functions.bicep` — Consumption/Linux hosting plan + Functions App (.NET isolated 10); KV refs
+- `infra/modules/keyvault.bicep` — Key Vault (standard, soft-delete 7d) + 4 secrets + access policies
+- `infra/README.md` — full deployment instructions including ShopAdmin `db_ddladmin` note
+
+**Key architectural patterns applied:**
+- System-assigned managed identity on App Service + Functions; access policy `get`/`list` on Key Vault
+- App settings use `@Microsoft.KeyVault(VaultName=...;SecretName=...)` references — zero plaintext secrets in config
+- Key Vault deployed last in `main.bicep` so it receives `principalId` outputs from App Service and Functions in one pass
+- `@secure()` on Bicep outputs for connection strings — prevents leaking key material to deployment logs
+- `listKeys()` used to compute storage connection string only at deployment time; result stored in Key Vault
+- `db_ddladmin` role requirement for ShopAdmin documented in README (EF Core migrations need DDL rights)
+
+**Resource names confirmed (dev):**
+`appi-outdoors-dev`, `law-outdoors-dev`, `sql-outdoors-dev`, `sqldb-outdoors-dev`, `stoutdoorsdev`,
+`asp-outdoors-dev`, `app-outdoors-api-dev`, `asp-outdoors-func-dev`, `func-outdoors-dev`, `kv-outdoors-dev`
+
+**Decision filed:** `.squad/decisions/inbox/toru-bicep-infra.md`
+
+---
+
 ### 2026-05-23 — Architecture Design Document Produced (Full Run)
 
 **Task:** Produce the full Architecture Design Document covering all 10 required sections.
