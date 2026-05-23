@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OutdoorsShop.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1cd38677e5e4b1bfb10d1f0e0734fd0e011133f0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1286cfe6ca8b54861a583a3702e8dd9dcd49a9db")]
 [assembly: System.Reflection.AssemblyProductAttribute("OutdoorsShop.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OutdoorsShop.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

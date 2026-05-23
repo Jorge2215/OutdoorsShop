@@ -474,3 +474,12 @@ C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\obj\Debu
 C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\obj\Debug\net10.0\OutdoorsShop.Api.Tests.pdb
 C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\obj\Debug\net10.0\OutdoorsShop.Api.Tests.genruntimeconfig.cache
 C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\obj\Debug\net10.0\ref\OutdoorsShop.Api.Tests.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\ClosedXML.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\ClosedXML.Parser.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\CsvHelper.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\DocumentFormat.OpenXml.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\DocumentFormat.OpenXml.Framework.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\ExcelNumberFormat.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\RBush.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\SixLabors.Fonts.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\System.IO.Packaging.dll
