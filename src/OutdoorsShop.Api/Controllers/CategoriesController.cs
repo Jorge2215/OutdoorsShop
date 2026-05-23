@@ -11,35 +11,98 @@ namespace OutdoorsShop.Api.Controllers;
 [Produces("application/json")]
 public class CategoriesController : ControllerBase
 {
-    private readonly ICategoryRepository _categoryRepository;
+    private readonly ICategoryRepository _categoryRepo;
 
-    public CategoriesController(ICategoryRepository categoryRepository)
+    public CategoriesController(ICategoryRepository categoryRepo)
     {
-        _categoryRepository = categoryRepository;
+        _categoryRepo = categoryRepo;
     }
 
-    /// <summary>Get all active categories.</summary>
+    // GET /api/v1/categories
     [HttpGet]
     [AllowAnonymous]
-    [ProducesResponseType(typeof(IEnumerable<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IEnumerable<CategoryDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll()
     {
-        var categories = await _categoryRepository.GetAllAsync();
-        var dtos = categories.Select(c => new { c.CategoryID, c.Name, c.IsActive });
-        return Ok(dtos);
+        var categories = await _categoryRepo.GetAllAsync();
+        return Ok(categories.Select(ToDto));
     }
 
-    /// <summary>Get a category by ID.</summary>
+    // GET /api/v1/categories/{id}
     [HttpGet("{id:int}")]
     [AllowAnonymous]
-    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id)
     {
-        var category = await _categoryRepository.GetByIdAsync(id);
+        var category = await _categoryRepo.GetByIdAsync(id);
         if (category is null)
-            return NotFound();
+            return NotFound(new { message = $"Category {id} not found." });
 
-        return Ok(new { category.CategoryID, category.Name, category.IsActive });
+        return Ok(ToDto(category));
     }
+
+    // POST /api/v1/categories  [Administrator]
+    [HttpPost]
+    [Authorize(Roles = "Administrator")]
+    [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Create([FromBody] CreateCategoryDto dto)
+    {
+        var category = new ProductCategory
+        {
+            Name = dto.Name,
+            IsActive = true
+        };
+
+        await _categoryRepo.AddAsync(category);
+        await _categoryRepo.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetById), new { id = category.CategoryID }, ToDto(category));
+    }
+
+    // PUT /api/v1/categories/{id}  [Administrator]
+    [HttpPut("{id:int}")]
+    [Authorize(Roles = "Administrator")]
+    [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateCategoryDto dto)
+    {
+        var category = await _categoryRepo.GetByIdAsync(id);
+        if (category is null)
+            return NotFound(new { message = $"Category {id} not found." });
+
+        category.Name = dto.Name;
+        category.IsActive = dto.IsActive;
+
+        await _categoryRepo.UpdateAsync(category);
+        await _categoryRepo.SaveChangesAsync();
+
+        return Ok(ToDto(category));
+    }
+
+    // DELETE /api/v1/categories/{id}  [Administrator] — soft delete
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Administrator")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var category = await _categoryRepo.GetByIdAsync(id);
+        if (category is null)
+            return NotFound(new { message = $"Category {id} not found." });
+
+        category.IsActive = false;
+        await _categoryRepo.UpdateAsync(category);
+        await _categoryRepo.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    private static CategoryDto ToDto(ProductCategory c) => new()
+    {
+        CategoryID = c.CategoryID,
+        Name = c.Name,
+        IsActive = c.IsActive
+    };
 }

@@ -10,10 +10,11 @@
 using System;
 using System.Reflection;
 
+[assembly: Microsoft.Extensions.Configuration.UserSecrets.UserSecretsIdAttribute("749208c0-6506-4fba-ac59-228ef8899ee4")]
 [assembly: System.Reflection.AssemblyCompanyAttribute("OutdoorsShop.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+014e1dffcede29988d67fbd38d72ecdfa17f796f")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1cd38677e5e4b1bfb10d1f0e0734fd0e011133f0")]
 [assembly: System.Reflection.AssemblyProductAttribute("OutdoorsShop.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OutdoorsShop.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
