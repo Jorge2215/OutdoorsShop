@@ -1,0 +1,12 @@
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\bin\Debug\net10.0\OutdoorsShop.Core.deps.json
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\bin\Debug\net10.0\OutdoorsShop.Core.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\bin\Debug\net10.0\OutdoorsShop.Core.pdb
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\OutdoorsShop.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\OutdoorsShop.Core.AssemblyInfoInputs.cache
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\OutdoorsShop.Core.AssemblyInfo.cs
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\OutdoorsShop.Core.csproj.CoreCompileInputs.cache
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\OutdoorsShop.Core.sourcelink.json
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\OutdoorsShop.Core.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\refint\OutdoorsShop.Core.dll
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\OutdoorsShop.Core.pdb
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Core\obj\Debug\net10.0\ref\OutdoorsShop.Core.dll

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OutdoorsShop.Api/OutdoorsShop.Api.csproj" />
+    <Project Path="src/OutdoorsShop.Core/OutdoorsShop.Core.csproj" />
+    <Project Path="src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj" />
+    <Project Path="src/OutdoorsShop.Infrastructure/OutdoorsShop.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OutdoorsShop.Api.Tests/OutdoorsShop.Api.Tests.csproj" />
+    <Project Path="tests/OutdoorsShop.Functions.Tests/OutdoorsShop.Functions.Tests.csproj" />
+  </Folder>
+</Solution>
