@@ -69,3 +69,8 @@
 - **frontend.yml**: triggers on push/PR to `main`/`dev` for `frontend/**`; runs `npm ci` + `npm run build`; uploads `frontend/dist` as artifact. Uses npm cache keyed on `frontend/package-lock.json`.
 - **functions.yml**: triggers on push/PR to `main`/`dev` for `src/OutdoorsShop.Functions/**`; builds only the Functions project; runs all tests in `OutdoorsShop.Tests`; publishes Functions artifact to `publish/functions` with a placeholder comment for Azure deploy step.
 - **All workflows**: `permissions: contents: read`, `actions/checkout@v4`, `actions/setup-dotnet@v4` (`10.x`), `actions/setup-node@v4` (`20`), `concurrency` groups with `cancel-in-progress: true`, badge comment at top of each file.
+
+### 2026-05-23 — CI/CD workflows added
+
+- Added three GitHub Actions workflows: .github/workflows/backend.yml, .github/workflows/frontend.yml, .github/workflows/functions.yml.
+- Decision filed: .squad/decisions/inbox/cinnamon-cicd-workflows.md (merged into .squad/decisions.md).

@@ -925,3 +925,92 @@ All tests follow `MethodOrScenario_ExpectedBehavior_WhenCondition`. Example:
 2. Layout and surface styling live in `frontend/src/index.css` through reusable shells (`container-shell`, `ornate-card`, `panel-shell`, `field-input`) instead of ad-hoc page styling, keeping the magical bazaar tone consistent across catalog, checkout, and admin views.
 3. Route pages rely on reusable UI building blocks in `frontend/src/components/ui/` and domain components in `frontend/src/components/products/` so customer and admin screens share the same visual language while staying responsive and accessible.
 4. Auth and cart flows follow team security decisions: access token remains in memory via `frontend/src/store/authStore.ts`, refresh is cookie-based through `frontend/src/api/client.ts`, and the cart persists only in localStorage via `frontend/src/store/cartStore.ts`.
+
+---
+
+
+# Decision: GitHub Actions CI/CD Workflows
+
+**Date:** 2026-05-23T20:39:55.398-03:00
+**Author:** Cinnamon (Backend Dev)
+**Status:** Accepted
+
+## What
+
+Three GitHub Actions workflows added to `.github/workflows/`:
+
+| File | Trigger Paths | Purpose |
+|---|---|---|
+| `backend.yml` | `src/**` | Build + test full .NET solution |
+| `frontend.yml` | `frontend/**` | Install deps + build React/Vite app |
+| `functions.yml` | `src/OutdoorsShop.Functions/**` | Build Functions + run test suite + publish artifact |
+
+## Key Choices
+
+- **Solution path:** `OutdoorsShop.slnx` at repo root (not `src/OutdoorsShop.sln`). The `.slnx` format is the actual file on disk; dotnet CLI supports it in .NET 10.
+- **Test runner (backend.yml):** runs against the full solution so all 74 test cases execute in one pass. Results saved as `.trx` and summarised in the GitHub job summary.
+- **Test runner (functions.yml):** targets `OutdoorsShop.Tests.csproj` directly (no category filter applied) — all tests run, which includes Functions-related coverage without risk of missing tests due to missing category annotations.
+- **Concurrency:** each workflow uses `cancel-in-progress: true` on the same branch to avoid redundant queued runs.
+- **Permissions:** `contents: read` only — no write access needed for CI-only workflows.
+- **Node cache:** `frontend.yml` caches npm via `cache-dependency-path: frontend/package-lock.json` for faster installs.
+- **Azure deploy placeholder:** `functions.yml` includes a comment pointing to the Microsoft docs for adding an Azure Functions deploy step once publish-profile secrets are configured.
+
+## Rationale
+
+Monorepo path filters prevent unnecessary cross-job triggers (a backend change won't rebuild the frontend and vice versa). Separate workflows also allow independent badge URLs per component.
+
+
+---
+
+
+# ADR: Azure Bicep Infrastructure Templates for Dev Environment
+
+**Date:** 2026-05-23  
+**By:** Toru (Architect)  
+**Status:** Accepted
+
+## Context
+
+The OutdoorsShop project needs reproducible, version-controlled Azure infrastructure for the dev environment. Manual portal configuration is not acceptable for a PoC that aims to demonstrate engineering best practices. All secrets must never appear in config files, environment variables, or deployment logs.
+
+## Decision
+
+Provision all dev Azure resources via Azure Bicep templates in `infra/`. A single orchestrator (`main.bicep`) calls six modules in dependency order. Sensitive parameters (`sqlAdminPassword`, `jwtSecret`) are `@secure()` and must be passed via CLI flags or CI/CD secret injection — never committed to source.
+
+## Resources provisioned
+
+| Resource | Name | SKU / Tier |
+|---|---|---|
+| Log Analytics | `law-outdoors-dev` | PerGB2018, 30-day retention |
+| Application Insights | `appi-outdoors-dev` | Workspace-based |
+| SQL Server | `sql-outdoors-dev` | v12, TLS 1.2, Azure services firewall open |
+| SQL Database | `sqldb-outdoors-dev` | Basic (5 DTU), geo-redundant backup |
+| Storage Account | `stoutdoorsdev` | Standard_LRS, StorageV2, HTTPS-only |
+| App Service Plan | `asp-outdoors-dev` | B1, Linux |
+| App Service (API) | `app-outdoors-api-dev` | .NET 10, system-assigned MI |
+| Functions Hosting Plan | `asp-outdoors-func-dev` | Y1 (Consumption), Linux |
+| Functions App | `func-outdoors-dev` | .NET isolated 10, system-assigned MI |
+| Key Vault | `kv-outdoors-dev` | Standard, soft-delete 7 days |
+
+## Secret management approach
+
+- All secrets stored in Key Vault (`kv-outdoors-dev`).
+- App Service and Functions access secrets via `@Microsoft.KeyVault(VaultName=...;SecretName=...)` app setting references.
+- Managed identities granted `get`/`list` access policies on Key Vault.
+- Bicep outputs for connection strings use `@secure()` to prevent logging.
+
+## Deployment order rationale
+
+Key Vault is deployed **last** in `main.bicep`. This is intentional: the Key Vault access policies require the `principalId` from the App Service and Functions managed identities, which are only available after those resources are created. Bicep resolves this via output references, creating an implicit dependency chain. App settings with Key Vault references are valid strings from the moment of App Service creation; Azure resolves them at runtime once Key Vault is live.
+
+## DB migration note (ShopAdmin)
+
+The `ShopAdmin` SQL user requires the `db_ddladmin` role so that EF Core's migration runner can execute `CREATE`/`ALTER`/`DROP` DDL statements. Without this role, `dotnet ef database update` fails. This is a one-time manual step documented in `infra/README.md`.
+
+## Consequences
+
+- Single `az deployment group create` command deploys all dev infrastructure.
+- No secrets in source code, app settings, or CI logs.
+- Key Vault access policies (not RBAC) are used as specified; can be migrated to RBAC in a future ADR.
+- `db_ddladmin` must be granted manually after first SQL deployment (not automated in Bicep to avoid embedding the app user password in the template).
+

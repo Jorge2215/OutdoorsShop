@@ -141,3 +141,8 @@
 - CI/CD workflows: `.github/workflows/backend.yml`, `frontend.yml`, `functions.yml`
 - Decision inbox: `.squad/decisions/inbox/toru-*.md`
 - Architecture document: `docs/architecture/architecture.md`
+
+### 2026-05-23 — Bicep infra and decision recorded
+
+- Created full Azure Bicep IaC under infra/ (main orchestrator + 6 modules + dev parameters + README).
+- Decision filed: .squad/decisions/inbox/toru-bicep-infra.md (merged into .squad/decisions.md).
