@@ -124,3 +124,10 @@ protected override void Dispose(bool disposing)
 - API tests: 58 passed, 0 skipped, 0 failed (45 unit + 13 integration)
 - Function tests: 16 passed, 4 skipped (seasonal date-injection gap — unrelated to EF Core)
 - Total: 74 passed, 4 skipped, 0 failed
+## 2026-05-23 — Integration tests fixed (Creta)
+Key learnings:
+- ConfigureServices callbacks in WebApplicationFactory run BEFORE Program.cs services; RemoveAll<DbContextOptions<>>() is a no-op in that callback for later registrations.
+- Guard AddDatabase to skip when connection string is empty.
+- Blank connection string via builder.UseSetting to prevent production AddDatabase from registering providers.
+- SqliteConnection for in-memory must remain open for factory lifetime; call EnsureCreated() and dispose in Dispose(bool).
+- Set JwtBearerOptions.MapInboundClaims = false so 'sub' maps to JwtRegisteredClaimNames.Sub and User.FindFirstValue works in AuthController.Me().

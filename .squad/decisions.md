@@ -617,3 +617,311 @@ Then re-run: `dotnet ef database update --project src/OutdoorsShop.Infrastructur
 - All meaningful architectural changes require Toru's approval
 - Document architectural decisions here via the inbox drop-box pattern
 - Keep history focused on work, decisions focused on direction
+
+
+---
+
+# Merged from inbox: cinnamon-azure-functions.md
+
+# Decision: Azure Functions — Queue Message Contracts and Architecture
+
+**Date:** 2026-05-23T19:36:12.645-03:00  
+**Author:** Cinnamon (Backend Dev)  
+**Status:** Accepted
+
+---
+
+## Context
+
+Three Azure Functions were implemented in `src/OutdoorsShop.Functions` (isolated worker, .NET 10). Key architecture choices were made regarding queue message shapes, entity ID types, and DI pattern.
+
+---
+
+## Decisions
+
+### 1. Queue message `orderId` and `productId` are `int`, not Guid
+
+The task spec suggested Guid, but the actual domain entities (`SalesOrder.OrderID`, `ProductInventory.ProductID`) use `int` PKs. Queue messages were designed to match the domain to avoid unnecessary mapping.
+
+### 2. Payment confirmation queue name: `payment-confirmations`
+
+The original stub used `payment-results`. Changed to `payment-confirmations` per task specification. Connection string key: `AzureWebJobsStorage`.
+
+### 3. `paymentStatus` string field in PaymentConfirmationMessage, not enum
+
+The queue message carries `paymentStatus: "Success|Failed|Pending"` as a plain string. These values intentionally differ from the internal `PaymentStatus` enum ("Confirmed" not "Success") — the function maps them explicitly, keeping the external contract decoupled from internal enum names.
+
+### 4. `StockUpdateLog.ProductId` is `int`
+
+Consistent with `ProductInventory.ProductID` (int). The `Id` PK of `StockUpdateLog` is `Guid` (new audit entity, no FK constraints).
+
+### 5. Inject `AppDbContext` directly into functions (not repositories)
+
+For Azure Functions, direct `AppDbContext` injection is simpler and avoids unnecessary indirection for background tasks. Repositories remain available for use from the API project.
+
+### 6. Season boundary: UTC month only
+
+Season detection uses `DateTime.UtcNow.Month`. No timezone conversion. This matches the function's UTC timer schedule (`0 0 2 * * *`).
+
+---
+
+## Queue Message Contracts
+
+### `payment-confirmations`
+```json
+{
+  "orderId": 42,
+  "paymentReference": "REF-ABC-123",
+  "paymentStatus": "Success",
+  "amount": 199.99,
+  "processedAt": "2026-05-23T22:36:12Z"
+}
+```
+- `paymentStatus`: `"Success"` | `"Failed"` | `"Pending"`
+
+### `stock-updates`
+```json
+{
+  "productId": 7,
+  "quantityDelta": 50,
+  "reason": "Restock",
+  "notes": "Supplier shipment PO-9901",
+  "updatedAt": "2026-05-23T22:36:12Z"
+}
+```
+- `quantityDelta`: positive (restock/return), negative (sale/adjustment)
+- `reason`: `"Restock"` | `"Sale"` | `"Adjustment"` | `"Return"`
+
+---
+
+## Schema Changes
+
+| Migration | Field |
+|---|---|
+| `AddProductDiscountMultiplier` | `Product.DiscountMultiplier decimal(5,4) DEFAULT 1.0` |
+| `AddOrderPaymentFields` | `SalesOrder.PaymentReference nvarchar(max) NULL`, `SalesOrder.PaidAt datetimeoffset NULL` |
+| `AddStockUpdateLog` | New `StockUpdateLogs` table |
+
+
+---
+
+# Merged from inbox: cinnamon-remaining-endpoints.md
+
+# Cinnamon backend decisions inbox
+
+- **Timestamp:** 2026-05-23T14:02:03.844-03:00
+- **Scope:** Customers, Orders, Inventory, and Reports endpoints for the .NET 10 Web API.
+
+## Proposed team-relevant decisions
+
+1. **Protected ownership rules live in services, not controllers.**
+   - `CustomersController` and `OrdersController` pass JWT context into services.
+   - `CustomerService` and `OrderService` decide whether a customer can read or mutate a resource.
+   - This keeps authorization-by-ownership reusable if Functions, jobs, or future endpoints need the same rule.
+
+2. **Paged responses are now the standard for admin list endpoints.**
+   - `PagedResult<T>` was introduced in `src/OutdoorsShop.Core/DTOs/Common/PagedResult.cs`.
+   - Customers, Orders, and Inventory list endpoints now share `pageNumber` / `pageSize` semantics.
+   - Recommend frontend and tests treat list payloads as `{ items, pageNumber, pageSize, totalCount, totalPages }`.
+
+3. **Order creation is server-validated against current catalog price and stock.**
+   - The API accepts `UnitPrice`, but `OrderService` rejects mismatches against the active product price.
+   - Inventory decrement and order persistence happen inside one EF Core transaction.
+   - This should remain the contract until a dedicated payment/cart service exists.
+
+4. **Report exports should keep data shaping in services and file rendering in API.**
+   - Services return report row DTOs.
+   - `ReportsController` owns CSV/Excel formatting with `CsvHelper` and `ClosedXML`.
+   - This avoids pushing transport-specific libraries into repository code.
+
+
+---
+
+# Merged from inbox: creta-integration-test-fix.md
+
+# Decision: EF Core Provider Strategy for Integration Tests
+
+**Date:** 2026-05-23T20:10:00.511-03:00  
+**Author:** Creta (Test Engineer)  
+**Status:** Applied
+
+---
+
+## Context
+
+Integration tests in `tests/OutdoorsShop.Api.Tests/Integration/` use `WebApplicationFactory<Program>` to spin up the full ASP.NET Core pipeline. The tests need a real database (for schema validation, Identity, foreign keys) but cannot require a live SQL Server instance in CI.
+
+The original attempt (`UseInMemoryDatabase`) was blocked by an EF Core 10.0 multi-provider conflict: "Only a single database provider can be registered in a service provider."
+
+## Root Cause (Fully Diagnosed)
+
+`IWebHostBuilder.ConfigureServices` callbacks in `WebApplicationFactory` execute **before** `Program.cs` services are registered. This means:
+
+1. Our `RemoveAll<DbContextOptions<AppDbContext>>()` had nothing to remove.
+2. After our callbacks finished, `Program.cs`'s `AddDatabase(...)` registered `UseSqlServer` (and its `IDatabaseProvider` via `AddEntityFrameworkSqlServer()`).
+3. Our SQLite provider was already registered, so both `IDatabaseProvider` implementations coexisted.
+4. EF Core 10.0 detects this and throws on first `DbContext` access.
+
+## Decision
+
+**Use SQLite in-memory** (`DataSource=:memory:`) as the EF Core provider for integration tests.
+
+**Implementation pattern chosen:** Guard `AddDatabase` against empty connection strings, then blank the connection string in the test factory via `builder.UseSetting` before `Program.cs` reads it. This prevents `UseSqlServer` from ever registering, making SQLite the only provider.
+
+### Why SQLite over InMemory
+
+- SQLite enforces foreign keys, NULL constraints, and unique indexes — closer to SQL Server behavior.
+- SQLite works with `EnsureCreated()` which builds the schema from the EF model directly.
+- InMemory would have the same conflict issue, and it doesn't enforce relational constraints.
+
+### Why NOT Migrate()
+
+SQLite does not support all SQL Server migration syntax (e.g., some `ALTER TABLE` patterns, computed columns). `EnsureCreated()` builds the schema directly from the current EF model — correct for test environments.
+
+### Connection lifetime
+
+The `SqliteConnection` is a field on `TestWebAppFactory` and is opened in `ConfigureWebHost`. It must stay open for the factory's lifetime — SQLite in-memory databases are destroyed when their connection closes. It is disposed in `Dispose(bool)`.
+
+### Seeding timing
+
+Seeding is performed in a `CreateHost` override, after `base.CreateHost(builder)` returns. This ensures the full application service provider is built (including Identity's `UserManager<ApplicationUser>` and `RoleManager<IdentityRole>`) before seeding runs.
+
+## Scope
+
+- Applies to `TestWebAppFactory` in `tests/OutdoorsShop.Api.Tests/`
+- `ServiceCollectionExtensions.AddDatabase` modified to guard against empty connection string (minimal production code change; does not affect production behavior when connection string is provided)
+
+## Related Fix
+
+`ServiceCollectionExtensions.AddJwtAuthentication`: added `options.MapInboundClaims = false`. The JWT middleware's default claim mapping was converting the `sub` claim to `ClaimTypes.NameIdentifier`, which caused `AuthController.Me()` and `Logout()` to silently receive `null` when calling `User.FindFirstValue(JwtRegisteredClaimNames.Sub)`. This was a pre-existing production bug exposed when integration tests began running.
+
+## Outcome
+
+- API tests: 58 passed, 0 skipped, 0 failed (45 unit + 13 integration)
+- Function tests: 16 passed, 4 skipped (seasonal date-injection gap — separate issue)
+- Total: 74 passed, 4 skipped, 0 failed
+
+
+---
+
+# Merged from inbox: creta-test-strategy.md
+
+# Test Architecture Decisions
+**Author:** Creta (Test Engineer)
+**Date:** 2026-05-23T19:44:50.257-03:00
+**Status:** Proposed
+
+---
+
+## Summary
+
+This document captures the test architecture decisions made when writing the comprehensive xUnit test suite for OutdoorsShop.
+
+---
+
+## 1. Unit vs Integration Split
+
+**Decision:** Primary coverage via Moq-based controller unit tests; integration tests defined but skipped pending infrastructure fix.
+
+**Rationale:**
+- The codebase uses service interfaces (`ICustomerService`, `IOrderService`, `IInventoryService`) and repository interfaces (`IProductRepository`, etc.) consistently. This makes Moq-based controller unit tests accurate and maintainable — tests survive refactoring of service implementations.
+- For `ProductsController` and `CategoriesController`, repository interfaces are injected directly, so repository-level mocks were used.
+- Integration tests via `WebApplicationFactory<Program>` are the right long-term approach for HTTP-level contract validation but have a current blocker (see §4 below).
+
+---
+
+## 2. Mocking Approach
+
+**Decision:** Mock at the service/repository boundary, not at the DbContext boundary.
+
+**Why it's correct:**
+- The domain service interfaces (`ICustomerService`, `IOrderService`, `IInventoryService`) return `OperationResult<T>` — this allows testing all result paths (success, forbidden, not found, bad request) without understanding EF Core internals.
+- Controllers that use services directly (CustomersController, OrdersController, InventoryController) have complete behavioral coverage because all paths through `ToActionResult()` are testable with mocked service results.
+
+**What is NOT covered by unit tests:**
+- Authorization attribute enforcement (`[Authorize(Roles = "Administrator")]`) — this is middleware-enforced and only testable via integration tests.
+- The `Forbidden()` result from `[Authorize(Roles = ...)]` on `InventoryController` (the entire controller is `[Authorize(Roles = "Administrator")]`) — unit tests call the controller method directly, bypassing auth middleware.
+
+---
+
+## 3. Azure Functions Testing
+
+**Decision:** Use `AppDbContext` with `UseInMemoryDatabase` directly. No HTTP layer.
+
+**Rationale:** Azure Functions (`SeasonalDiscountFunction`, `PaymentConfirmationFunction`, `StockUpdateFunction`) accept `AppDbContext` as a constructor parameter. InMemory DbContext is the cleanest isolation mechanism without requiring a real database.
+
+**Known gap — SeasonalDiscountFunction date injection:**
+`SeasonalDiscountFunction.Run()` reads `DateTime.UtcNow` directly. Tests for specific seasons (winter → 0.85, summer → 0.90) are **skipped** because they are non-deterministic across calendar months.
+
+**Remediation:**
+1. Introduce `IDateTimeProvider` interface (or `TimeProvider` from .NET 8) in `OutdoorsShop.Core`.
+2. Inject it into `SeasonalDiscountFunction` instead of using `DateTime.UtcNow`.
+3. Unskip `Execute_AppliesWinterDiscount_*`, `Execute_AppliesSummerDiscount_*`, `Execute_ResetsDiscount_InSpring`, `Execute_ResetsDiscount_InAutumn` with a mock `TimeProvider`.
+
+The `Run_SetsCorrectMultipliersForCurrentSeason` and `Run_OnlyAffectsActiveProducts_InactiveProductNotModified` tests DO run without date injection.
+
+---
+
+## 4. Integration Test Infrastructure Gap — EF Core 10.0 Multi-Provider Conflict
+
+**Status:** BLOCKED — all integration tests currently skipped.
+
+**Error:** `System.InvalidOperationException: Services for database providers 'Microsoft.EntityFrameworkCore.SqlServer', 'Microsoft.EntityFrameworkCore.InMemory' have been registered in the service provider. Only a single database provider can be registered in a service provider.`
+
+**Root cause:** EF Core 8.0+ validates that only one database provider is registered in the application service provider. When `WebApplicationFactory` replaces `DbContextOptions<AppDbContext>` (SqlServer → InMemory), the validation detects both provider registrations and throws during service provider construction.
+
+**Remediation options (in order of preference):**
+
+1. **Use SQLite in-memory** (single provider replacement): Replace `UseInMemoryDatabase` with `UseSqlite("DataSource=:memory:")` and a shared `SqliteConnection`. SQLite is a real relational DB, so schema creation works via `EnsureCreated()`.
+
+   ```csharp
+   services.AddSingleton<DbConnection>(_ =>
+   {
+       var conn = new SqliteConnection("DataSource=:memory:");
+       conn.Open();
+       return conn;
+   });
+   services.AddDbContext<AppDbContext>((sp, opt) =>
+       opt.UseSqlite(sp.GetRequiredService<DbConnection>()));
+   ```
+
+2. **Suppress DI validation in test host**: `builder.UseDefaultServiceProvider(opt => { opt.ValidateOnBuild = false; })`. This is the quickest fix but masks DI misconfiguration.
+
+3. **Isolate test DI from app DI**: Create a separate test-only `WebApplicationFactory` that builds the host without `Program.cs`'s `AddDatabase()` call — use `builder.ConfigureAppConfiguration` to suppress the connection string and `AddDbContext` with InMemory only.
+
+---
+
+## 5. Coverage Gaps Not Addressed
+
+| Area | Reason |
+|------|--------|
+| `ReportsController` | Not in scope for this sprint. Requires blob storage mock. |
+| Auth token refresh (integration) | Skipped with integration tests. Unit test covers `Refresh_Returns401_WhenNoCookiePresent`. |
+| Attribute-only auth (`[Authorize(Roles = ...)]` on `InventoryController`) | Integration test needed — unit tests bypass middleware. |
+| `CustomerService`, `OrderService`, `InventoryService` | Service unit tests not in scope; covered by controller tests. |
+| FluentValidation rules | Not tested; would require integration or manual model state manipulation. |
+
+---
+
+## 6. Test Naming Convention
+
+All tests follow `MethodOrScenario_ExpectedBehavior_WhenCondition`. Example:
+- `GetById_Returns403_WhenCustomerAccessesOtherProfile`
+- `Run_ClampsToZero_WhenDeltaExceedsStock`
+
+
+---
+
+# Merged from inbox: malta-frontend-theme.md
+
+# Malta frontend theme decisions
+
+- **Date:** 2026-05-23T19:06:28.812-03:00
+- **Author:** Malta
+
+## Decisions
+
+1. The storefront uses Tailwind CSS with a shared oriental palette (`crimson`, `gold`, `jade`, `ink`, `parchment`, `copper`, `mist`) defined in `frontend/tailwind.config.js` so every page can reuse the same visual tokens.
+2. Layout and surface styling live in `frontend/src/index.css` through reusable shells (`container-shell`, `ornate-card`, `panel-shell`, `field-input`) instead of ad-hoc page styling, keeping the magical bazaar tone consistent across catalog, checkout, and admin views.
+3. Route pages rely on reusable UI building blocks in `frontend/src/components/ui/` and domain components in `frontend/src/components/products/` so customer and admin screens share the same visual language while staying responsive and accessible.
+4. Auth and cart flows follow team security decisions: access token remains in memory via `frontend/src/store/authStore.ts`, refresh is cookie-based through `frontend/src/api/client.ts`, and the cart persists only in localStorage via `frontend/src/store/cartStore.ts`.
