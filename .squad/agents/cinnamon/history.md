@@ -41,7 +41,19 @@
 - Logout: removes token hash from AspNetUserTokens + expires cookie with past date
 - UserProfileDto lives in Core.DTOs.Auth
 
-### 2026-05-23T14:02:03.844-03:00 — Remaining backend endpoints
+### 2026-05-23T19:36:12.645-03:00 — Azure Functions implementation
+
+- **Entity IDs are int, not Guid**: `Product.ProductID`, `SalesOrder.OrderID`, `ProductInventory.ProductID` are all `int`. Queue message contracts were adapted to use `int` for entity lookups, not Guid.
+- **OrderStatus is an enum**: `SalesOrder.Status` is `OrderStatus` enum (Pending/Processing/Shipped/Delivered/Cancelled), stored as string via `.HasConversion<string>()`. Payment confirmation maps "Success" → `OrderStatus.Processing`, "Failed" → `OrderStatus.Cancelled`.
+- **PaymentStatus enum**: Pending/Confirmed/Failed — "Success" in queue message maps to `PaymentStatus.Confirmed`.
+- **SeasonalDiscount schedule**: `0 0 2 * * *` (02:00 UTC daily). Season detection by UTC month; Winter (Dec/Jan/Feb) → Camping+Trekking 15% off; Summer (Jun/Jul/Aug) → Cycling+Climbing 10% off; Spring/Autumn → reset to 1.0. Global query filter for IsActive applies automatically.
+- **PaymentConfirmation queue**: `payment-confirmations`. On Failed: loads `order.Details` eagerly and restores `ProductInventory.QuantityAvailable` for each line item.
+- **StockUpdate**: creates `ProductInventory` record if missing (default threshold=5). Logs `StockUpdateLog` (Guid PK, int ProductId). Quantity clamped to ≥0.
+- **Migrations added**: `AddProductDiscountMultiplier`, `AddOrderPaymentFields`, `AddStockUpdateLog`.
+- **New entity fields**: `Product.DiscountMultiplier` (decimal, default 1.0, precision 5,4); `SalesOrder.PaymentReference` (string?), `SalesOrder.PaidAt` (DateTimeOffset?).
+- **DI**: Functions host already had AppDbContext + all repositories registered in Program.cs — no changes needed.
+- **Solution file**: `OutdoorsShop.slnx` (not `.sln`) at repo root.
+
 - **Service layer added for protected business rules:** `CustomerService`, `OrderService`, and `InventoryService` live in `src/OutdoorsShop.Infrastructure/Services/` and are wired in `src/OutdoorsShop.Api/Extensions/ServiceCollectionExtensions.cs` via `AddDomainServices()`.
 - **Pagination contract:** shared `PagedResult<T>` lives in `src/OutdoorsShop.Core/DTOs/Common/`; Customers, Orders, and Inventory list endpoints now return paged payloads instead of raw collections.
 - **Customer ownership check:** controllers read JWT `customer_id`, but the allow/deny decision happens inside `ICustomerService` / `IOrderService`; controllers only translate service results to HTTP responses.

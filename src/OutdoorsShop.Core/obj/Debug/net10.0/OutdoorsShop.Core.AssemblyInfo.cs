@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OutdoorsShop.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c4a9c9b1be1d77332a2d94e0cdea373dd626b982")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+781a131cb5dc26bc871ebec00806ff99d058e60b")]
 [assembly: System.Reflection.AssemblyProductAttribute("OutdoorsShop.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OutdoorsShop.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

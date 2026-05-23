@@ -44,4 +44,4 @@ Cinnamon, create the EF Core initial migration. Use the following ConnectioStrin
 
 
 ## Resume
-Cinnamon, implement the Orders endpoints
+copilot --resume=561f7ff3-e5a1-4fa8-9a38-91908166a3d2
