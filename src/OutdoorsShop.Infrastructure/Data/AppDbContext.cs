@@ -21,6 +21,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     {
         base.OnModelCreating(builder);
 
+        // Explicit primary keys (non-conventional names)
+        builder.Entity<ProductCategory>().HasKey(c => c.CategoryID);
+        builder.Entity<SalesOrder>().HasKey(o => o.OrderID);
+        builder.Entity<SalesOrderDetail>().HasKey(d => d.OrderDetailID);
+
         // Table name overrides
         builder.Entity<ProductCategory>().ToTable("Categories");
         builder.Entity<SalesOrder>().ToTable("Orders");
