@@ -1,23 +1,23 @@
+import type { Category } from './category'
+
 export interface Product {
-  productID: number;
-  name: string;
-  categoryID: number;
-  categoryName: string;
-  price: number;
-  description?: string;
-  imageUrl?: string;
-  isActive: boolean;
-  quantityAvailable: number;
+  id: number
+  name: string
+  description: string
+  price: number
+  imageUrl: string | null
+  isActive: boolean
+  categoryId: number
+  category: Category
+  quantityAvailable: number
 }
 
-export interface CreateProductRequest {
-  name: string;
-  categoryID: number;
-  price: number;
-  description?: string;
-  imageUrl?: string;
+export interface ProductUpsertRequest {
+  name: string
+  description: string
+  price: number
+  imageUrl: string
+  categoryId: number
+  isActive?: boolean
 }
 
-export interface UpdateProductRequest extends Partial<CreateProductRequest> {
-  isActive?: boolean;
-}

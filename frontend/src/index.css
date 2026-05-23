@@ -1,1 +1,103 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #1a1a2e;
+  background-color: #f5f0e8;
+  font-family: 'Lato', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply min-h-screen bg-parchment text-ink font-body;
+  background-image:
+    radial-gradient(circle at top left, rgba(201, 168, 76, 0.18), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(45, 106, 79, 0.14), transparent 24%),
+    linear-gradient(180deg, rgba(245, 240, 232, 0.98), rgba(232, 224, 208, 0.96));
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+@layer base {
+  * {
+    @apply border-gold/20;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading tracking-wide text-ink;
+  }
+
+  a {
+    @apply transition-colors duration-200;
+  }
+}
+
+@layer components {
+  .container-shell {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .panel-shell {
+    @apply rounded-[1.75rem] border border-gold/35 bg-white/75 shadow-gold backdrop-blur;
+  }
+
+  .ornate-card {
+    @apply relative overflow-hidden rounded-[1.75rem] border border-gold/40 bg-parchment/95 shadow-gold transition duration-300 hover:-translate-y-1 hover:shadow-glow;
+  }
+
+  .field-label {
+    @apply mb-2 block text-sm font-bold uppercase tracking-[0.24em] text-ink/70;
+  }
+
+  .field-input {
+    @apply w-full rounded-2xl border border-gold/35 bg-white/80 px-4 py-3 text-sm text-ink shadow-sm outline-none transition focus:border-crimson focus:ring-2 focus:ring-gold/40;
+  }
+
+  .lotus-divider {
+    @apply relative mx-auto flex w-full max-w-xs items-center justify-center gap-3 text-gold;
+  }
+
+  .lotus-divider::before,
+  .lotus-divider::after {
+    content: '';
+    @apply h-px flex-1 bg-gradient-to-r from-transparent via-gold/80 to-transparent;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .bamboo-grid {
+    background-image:
+      linear-gradient(rgba(201, 168, 76, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(201, 168, 76, 0.08) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .hero-pattern {
+    background-image:
+      radial-gradient(circle at 10% 20%, rgba(201, 168, 76, 0.35), transparent 22%),
+      radial-gradient(circle at 85% 15%, rgba(184, 115, 51, 0.2), transparent 18%),
+      linear-gradient(135deg, rgba(139, 0, 0, 0.96), rgba(26, 26, 46, 0.96));
+  }
+}
+

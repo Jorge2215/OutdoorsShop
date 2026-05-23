@@ -1,17 +1,89 @@
-import apiClient from './client';
-import type { Product, CreateProductRequest, UpdateProductRequest } from '../types/product';
+import type { Category } from '../types/category'
+import type { Product, ProductUpsertRequest } from '../types/product'
+import { fetchWithAuth, request } from './client'
 
-export interface ProductFilters {
-  categoryId?: number;
-  search?: string;
-  page?: number;
-  pageSize?: number;
+interface RawProduct {
+  productID: number
+  name: string
+  categoryID: number
+  categoryName: string
+  price: number
+  description?: string | null
+  imageUrl?: string | null
+  isActive: boolean
+  quantityAvailable: number
+}
+
+function mapCategory(product: RawProduct): Category {
+  return {
+    id: product.categoryID,
+    name: product.categoryName,
+    isActive: true,
+  }
+}
+
+function mapProduct(product: RawProduct): Product {
+  return {
+    id: product.productID,
+    name: product.name,
+    description: product.description ?? '',
+    price: product.price,
+    imageUrl: product.imageUrl ?? null,
+    isActive: product.isActive,
+    categoryId: product.categoryID,
+    category: mapCategory(product),
+    quantityAvailable: product.quantityAvailable,
+  }
+}
+
+function buildQuery(params?: { categoryId?: number; search?: string }) {
+  const query = new URLSearchParams()
+  if (params?.categoryId) {
+    query.set('categoryId', String(params.categoryId))
+  }
+  if (params?.search) {
+    query.set('search', params.search)
+  }
+  const value = query.toString()
+  return value ? `?${value}` : ''
+}
+
+function mapPayload(product: ProductUpsertRequest) {
+  return {
+    name: product.name,
+    categoryID: product.categoryId,
+    price: product.price,
+    description: product.description,
+    imageUrl: product.imageUrl || null,
+    isActive: product.isActive ?? true,
+  }
 }
 
 export const productsApi = {
-  getAll: (filters?: ProductFilters) => apiClient.get<Product[]>('/products', { params: filters }),
-  getById: (id: number) => apiClient.get<Product>(`/products/${id}`),
-  create: (data: CreateProductRequest) => apiClient.post<Product>('/products', data),
-  update: (id: number, data: UpdateProductRequest) => apiClient.put<Product>(`/products/${id}`, data),
-  delete: (id: number) => apiClient.delete(`/products/${id}`),
-};
+  async list(params?: { categoryId?: number; search?: string }) {
+    const response = await request<RawProduct[]>(`/products${buildQuery(params)}`)
+    return response.map(mapProduct)
+  },
+  async getById(id: number) {
+    const response = await request<RawProduct>(`/products/${id}`)
+    return mapProduct(response)
+  },
+  async create(payload: ProductUpsertRequest) {
+    const response = await fetchWithAuth<RawProduct>('/products', {
+      method: 'POST',
+      body: JSON.stringify(mapPayload(payload)),
+    })
+    return mapProduct(response)
+  },
+  async update(id: number, payload: ProductUpsertRequest) {
+    const response = await fetchWithAuth<RawProduct>(`/products/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(mapPayload(payload)),
+    })
+    return mapProduct(response)
+  },
+  async remove(id: number) {
+    await fetchWithAuth<void>(`/products/${id}`, { method: 'DELETE' })
+  },
+}
+

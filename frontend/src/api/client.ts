@@ -1,37 +1,137 @@
-import axios from 'axios';
-import { useAuthStore } from '../store/auth.store';
+import { useAuthStore } from '../store/authStore'
+import { buildApiUrl } from './config'
 
-const apiClient = axios.create({
-  baseURL: '/api/v1',
-  headers: { 'Content-Type': 'application/json' },
-  withCredentials: true,
-});
+export class ApiError extends Error {
+  status: number
+  details?: unknown
 
-apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().accessToken;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  constructor(message: string, status: number, details?: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.details = details
   }
-  return config;
-});
+}
 
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      try {
-        const { data } = await axios.post('/api/v1/auth/refresh', {}, { withCredentials: true });
-        useAuthStore.getState().setAccessToken(data.accessToken);
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
-        return apiClient(originalRequest);
-      } catch {
-        useAuthStore.getState().logout();
+function extractErrorMessage(payload: unknown, fallback: string) {
+  if (!payload) {
+    return fallback
+  }
+
+  if (typeof payload === 'string') {
+    return payload
+  }
+
+  if (Array.isArray(payload)) {
+    const messages = payload
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return entry
+        }
+        if (entry && typeof entry === 'object' && 'description' in entry && typeof entry.description === 'string') {
+          return entry.description
+        }
+        return null
+      })
+      .filter(Boolean)
+
+    return messages.join(' ') || fallback
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    if (typeof record.message === 'string') {
+      return record.message
+    }
+    if (typeof record.title === 'string') {
+      return record.title
+    }
+    if (record.errors && typeof record.errors === 'object') {
+      const nested = Object.values(record.errors as Record<string, unknown>)
+        .flatMap((value) => (Array.isArray(value) ? value : [value]))
+        .filter((value): value is string => typeof value === 'string')
+      if (nested.length > 0) {
+        return nested.join(' ')
       }
     }
-    return Promise.reject(error);
   }
-);
 
-export default apiClient;
+  return fallback
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  const text = await response.text()
+  const payload = text ? (JSON.parse(text) as unknown) : null
+
+  if (!response.ok) {
+    throw new ApiError(extractErrorMessage(payload, response.statusText || 'Request failed'), response.status, payload)
+  }
+
+  return payload as T
+}
+
+function mergeHeaders(headers?: HeadersInit, token?: string) {
+  const merged = new Headers(headers)
+  if (!merged.has('Content-Type')) {
+    merged.set('Content-Type', 'application/json')
+  }
+  if (token) {
+    merged.set('Authorization', `Bearer ${token}`)
+  }
+  return merged
+}
+
+function redirectToLogin() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const target = `${window.location.pathname}${window.location.search}`
+  const next = encodeURIComponent(target)
+  window.location.assign(`/login?next=${next}`)
+}
+
+export async function request<T>(path: string, init: RequestInit = {}) {
+  const response = await fetch(buildApiUrl(path), {
+    ...init,
+    headers: mergeHeaders(init.headers),
+    credentials: 'include',
+  })
+
+  return parseResponse<T>(response)
+}
+
+export async function requestWithToken<T>(path: string, token: string, init: RequestInit = {}) {
+  const response = await fetch(buildApiUrl(path), {
+    ...init,
+    headers: mergeHeaders(init.headers, token),
+    credentials: 'include',
+  })
+
+  return parseResponse<T>(response)
+}
+
+export async function fetchWithAuth<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+  const token = useAuthStore.getState().accessToken
+
+  const response = await fetch(buildApiUrl(path), {
+    ...init,
+    headers: mergeHeaders(init.headers, token ?? undefined),
+    credentials: 'include',
+  })
+
+  if (response.status === 401 && !retried) {
+    const refreshed = await useAuthStore.getState().refreshToken()
+    if (refreshed) {
+      return fetchWithAuth<T>(path, init, true)
+    }
+  }
+
+  if (response.status === 401) {
+    useAuthStore.getState().clearAuth()
+    redirectToLogin()
+  }
+
+  return parseResponse<T>(response)
+}
+

@@ -1,7 +1,28 @@
-import apiClient from './client';
-import type { Category } from '../types/category';
+import type { Category } from '../types/category'
+import { request } from './client'
+
+interface RawCategory {
+  categoryID: number
+  name: string
+  isActive: boolean
+}
+
+function mapCategory(response: RawCategory): Category {
+  return {
+    id: response.categoryID,
+    name: response.name,
+    isActive: response.isActive,
+  }
+}
 
 export const categoriesApi = {
-  getAll: () => apiClient.get<Category[]>('/categories'),
-  getById: (id: number) => apiClient.get<Category>(`/categories/${id}`),
-};
+  async list() {
+    const response = await request<RawCategory[]>('/categories')
+    return response.map(mapCategory)
+  },
+  async getById(id: number) {
+    const response = await request<RawCategory>(`/categories/${id}`)
+    return mapCategory(response)
+  },
+}
+

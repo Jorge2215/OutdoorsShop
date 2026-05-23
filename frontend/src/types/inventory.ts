@@ -1,8 +1,14 @@
 export interface InventoryItem {
-  productID: number;
-  productName: string;
-  quantityAvailable: number;
-  reorderThreshold: number;
-  lastUpdated: string;
-  isLowStock: boolean;
+  productId: number
+  productName: string
+  quantityAvailable: number
+  lastUpdated: string
+  reorderThreshold: number
+  isLowStock: boolean
 }
+
+export interface InventoryUpdateRequest {
+  quantityAvailable: number
+  reorderThreshold: number
+}
+

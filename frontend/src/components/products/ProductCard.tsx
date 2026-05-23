@@ -1,59 +1,51 @@
-import { ShoppingCart } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import type { Product } from '../../types/product';
-import { useCartStore } from '../../store/cart.store';
-import { Button } from '../ui/Button';
-import { Badge } from '../ui/Badge';
+import { ShoppingCart } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useCartStore } from '../../store/cartStore'
+import type { Product } from '../../types/product'
+import { getProductImage } from '../../utils/constants'
+import { formatCurrency } from '../../utils/format'
+import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+import { CategoryBadge } from './CategoryBadge'
 
-export function ProductCard({ product }: { product: Product }) {
-  const addItem = useCartStore((s) => s.addItem);
-  const navigate = useNavigate();
+interface ProductCardProps {
+  product: Product
+}
+
+export function ProductCard({ product }: ProductCardProps) {
+  const addItem = useCartStore((state) => state.addItem)
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-      <div
-        className="h-48 bg-gray-100 cursor-pointer flex items-center justify-center overflow-hidden"
-        onClick={() => navigate(`/products/${product.productID}`)}
-      >
-        {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
-        ) : (
-          <span className="text-4xl">🏕️</span>
-        )}
-      </div>
-      <div className="p-4">
-        <h3
-          className="font-semibold text-gray-800 truncate cursor-pointer hover:text-green-700"
-          onClick={() => navigate(`/products/${product.productID}`)}
-        >
-          {product.name}
-        </h3>
-        <p className="text-sm text-gray-500 mt-1">{product.categoryName}</p>
-        <div className="flex items-center justify-between mt-3">
-          <span className="text-lg font-bold text-green-700">${product.price.toFixed(2)}</span>
-          {product.quantityAvailable === 0 ? (
-            <Badge variant="red">Out of stock</Badge>
-          ) : product.quantityAvailable <= 5 ? (
-            <Badge variant="yellow">Low stock</Badge>
-          ) : null}
+    <Card className="flex h-full flex-col">
+      <Link to={`/products/${product.id}`} className="overflow-hidden rounded-[1.35rem]">
+        <img
+          src={getProductImage(product.imageUrl)}
+          alt={product.name}
+          className="h-56 w-full object-cover transition duration-500 hover:scale-105"
+        />
+      </Link>
+      <div className="mt-5 flex flex-1 flex-col">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <CategoryBadge category={product.category} />
+          <span className="text-sm font-bold uppercase tracking-[0.18em] text-ink/50">
+            {product.quantityAvailable > 0 ? `${product.quantityAvailable} in stock` : 'Sold out'}
+          </span>
         </div>
-        <Button
-          className="w-full mt-3"
-          size="sm"
-          disabled={product.quantityAvailable === 0}
-          onClick={() =>
-            addItem({
-              productID: product.productID,
-              name: product.name,
-              price: product.price,
-              quantity: 1,
-              imageUrl: product.imageUrl,
-            })
-          }
-        >
-          <ShoppingCart size={14} className="mr-1.5" /> Add to cart
-        </Button>
+        <Link to={`/products/${product.id}`} className="text-xl font-semibold text-ink transition hover:text-crimson">
+          {product.name}
+        </Link>
+        <p className="mt-3 flex-1 text-sm text-ink/70">{product.description || 'Equipment touched with craft, comfort, and expedition-ready detail.'}</p>
+        <div className="mt-5 flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-ink/50">Bazaar price</p>
+            <p className="font-heading text-2xl text-crimson">{formatCurrency(product.price)}</p>
+          </div>
+          <Button onClick={() => addItem(product, 1)} disabled={product.quantityAvailable <= 0}>
+            <ShoppingCart className="mr-2 h-4 w-4" /> Add to cart
+          </Button>
+        </div>
       </div>
-    </div>
-  );
+    </Card>
+  )
 }
+

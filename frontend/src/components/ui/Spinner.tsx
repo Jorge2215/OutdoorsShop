@@ -1,8 +1,10 @@
-export function Spinner({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
-  const sizes = { sm: 'h-4 w-4', md: 'h-8 w-8', lg: 'h-12 w-12' };
-  return (
-    <div
-      className={`${sizes[size]} animate-spin rounded-full border-4 border-gray-200 border-t-green-700`}
-    />
-  );
+import { cn } from '../../utils/cn'
+
+interface SpinnerProps {
+  className?: string
 }
+
+export function Spinner({ className }: SpinnerProps) {
+  return <span className={cn('inline-flex h-10 w-10 animate-spin rounded-full border-4 border-gold/25 border-t-gold', className)} aria-hidden="true" />
+}
+
