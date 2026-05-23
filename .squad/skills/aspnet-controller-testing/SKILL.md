@@ -181,9 +181,88 @@ updated!.Price.Should().Be(expectedPrice);
 
 ---
 
-## 7. Testing OperationResult<T> Patterns
+## 8. EF Core 10.0 Multi-Provider Conflict — WebApplicationFactory Fix
 
-When services return `OperationResult<T>`, test each outcome:
+**Confidence:** High (independently confirmed via root-cause diagnosis)
+
+### Problem
+
+`WebApplicationFactory.ConfigureWebHost` callbacks run **before** `Program.cs` registers its services. This means:
+- `services.RemoveAll<DbContextOptions<AppDbContext>>()` has nothing to remove yet.
+- After your callback finishes, `Program.cs` registers `UseSqlServer` and its internal services.
+- Result: both SQL Server and your replacement provider (SQLite or InMemory) end up in the DI container.
+- EF Core 10.0 throws on first DbContext access: *"Only a single database provider can be registered in a service provider."*
+
+This affects ANY provider replacement pattern, including `UseInMemoryDatabase`.
+
+### Why the remove-and-replace approach doesn't work
+
+Filtering services by assembly or FullName to remove SQL Server registrations returns 0 results in `ConfigureServices` callbacks — the services aren't there yet when the callback runs.
+
+### Correct fix
+
+**Step 1:** Guard `AddDatabase` against empty connection strings (production code change):
+
+```csharp
+public static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration configuration)
+{
+    var connectionString = configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrEmpty(connectionString))
+        services.AddDbContext<AppDbContext>(options => options.UseSqlServer(connectionString));
+    return services;
+}
+```
+
+**Step 2:** Blank the connection string in `TestWebAppFactory.ConfigureWebHost` before Program.cs reads it:
+
+```csharp
+builder.UseSetting("ConnectionStrings:DefaultConnection", "");
+```
+
+**Step 3:** Register SQLite in `ConfigureServices` — now the only provider in the DI container:
+
+```csharp
+private readonly SqliteConnection _connection = new("DataSource=:memory:");
+
+builder.ConfigureServices(services =>
+{
+    services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
+});
+```
+
+**Step 4:** Keep `_connection` open for the factory lifetime. Seed in `CreateHost` override (after the full host is built, so Identity services are available):
+
+```csharp
+protected override IHost CreateHost(IHostBuilder builder)
+{
+    var host = base.CreateHost(builder);
+    using var scope = host.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();  // NOT Migrate() — SQLite incompatible with SQL Server migrations
+    SeedTestData(scope.ServiceProvider).GetAwaiter().GetResult();
+    return host;
+}
+
+protected override void Dispose(bool disposing)
+{
+    base.Dispose(disposing);
+    if (disposing) _connection.Dispose();
+}
+```
+
+### Related: JWT claim mapping bug
+
+With `MapInboundClaims = true` (default), JWT middleware maps `sub` → `ClaimTypes.NameIdentifier`. Controllers using `User.FindFirstValue(JwtRegisteredClaimNames.Sub)` get `null`. Fix:
+
+```csharp
+.AddJwtBearer(options =>
+{
+    options.MapInboundClaims = false;  // preserve original JWT short claim names
+    options.TokenValidationParameters = new TokenValidationParameters { ... };
+});
+```
+
+## 7. Testing OperationResult<T> Patterns
 
 ```csharp
 // Success path

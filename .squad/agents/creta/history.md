@@ -51,6 +51,76 @@
 
 **Coverage numbers (as of this sprint):**
 
-- API unit tests: 46 passed, 13 skipped (integration) — 6 controller files × avg 7 tests
+- API unit tests: 45 passed, 13 skipped (integration) — 6 controller files × avg 7 tests
 - Function tests: 17 passed, 4 skipped (seasonal) — 3 function files × avg 6 tests
 - ReportsController and service-layer unit tests are out of scope for this sprint.
+
+### 2026-05-23 — SQLite in-memory fix for WebApplicationFactory integration tests
+
+**Root cause of EF Core 10.0 multi-provider conflict (fully diagnosed):**
+
+- `IWebHostBuilder.ConfigureServices` callbacks in `WebApplicationFactory` run **BEFORE** `Program.cs` services are registered. `RemoveAll<DbContextOptions<AppDbContext>>()` was a no-op because SQL Server hadn't been registered yet.
+- Filtering by assembly name (`Microsoft.EntityFrameworkCore.SqlServer`) or `FullName.Contains("SqlServer")` returned 0 results for the same reason.
+- After our callbacks ran, `Program.cs`'s `AddDatabase(...)` added `UseSqlServer` (via `AddEntityFrameworkSqlServer()` internally), introducing a second `IDatabaseProvider` alongside our SQLite one.
+- EF Core 10.0 validates the application service provider when the first `DbContext` instance is accessed and throws on two registered `IDatabaseProvider` implementations.
+
+**The correct fix (approach that actually works):**
+
+1. **Blank the connection string early** via `builder.UseSetting("ConnectionStrings:DefaultConnection", "")` — this runs before `Program.cs` reads its config from `WebApplicationBuilder`.
+2. **Guard `AddDatabase`** in `ServiceCollectionExtensions.cs`: skip `UseSqlServer` when the connection string is empty/null.
+3. **Register SQLite** in `ConfigureServices` callback — now the only provider, no conflict.
+4. **Move seeding to `CreateHost` override** — runs after the full host (and all Identity services) is built, so `UserManager`, `RoleManager` etc. are available.
+
+**Code pattern:**
+
+```csharp
+// ServiceCollectionExtensions.cs — null guard prevents SQL Server in tests
+public static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration configuration)
+{
+    var connectionString = configuration.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrEmpty(connectionString))
+        services.AddDbContext<AppDbContext>(options => options.UseSqlServer(connectionString));
+    return services;
+}
+
+// TestWebAppFactory.cs — key excerpts
+private readonly SqliteConnection _connection = new("DataSource=:memory:");
+
+protected override void ConfigureWebHost(IWebHostBuilder builder)
+{
+    _connection.Open();
+    builder.UseSetting("ConnectionStrings:DefaultConnection", "");  // skips AddDatabase's UseSqlServer
+    builder.UseSetting("AzureStorage:ConnectionString", "");
+    builder.UseEnvironment("Development");
+    builder.ConfigureServices(services =>
+    {
+        services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
+        // blob mock...
+    });
+}
+
+protected override IHost CreateHost(IHostBuilder builder)
+{
+    var host = base.CreateHost(builder);
+    using var scope = host.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();  // builds schema from EF model — NOT Migrate()
+    SeedTestData(scope.ServiceProvider).GetAwaiter().GetResult();
+    return host;
+}
+
+protected override void Dispose(bool disposing)
+{
+    base.Dispose(disposing);
+    if (disposing) _connection.Dispose();  // must stay open for factory lifetime
+}
+```
+
+**Bonus fix discovered while running tests:**
+- `AddJwtAuthentication`: added `options.MapInboundClaims = false` — the JWT middleware's default claim mapping was converting `sub` → `ClaimTypes.NameIdentifier`, silently breaking `User.FindFirstValue(JwtRegisteredClaimNames.Sub)` in `AuthController.Me()` and `Logout()`.
+
+**Coverage numbers (after this sprint):**
+
+- API tests: 58 passed, 0 skipped, 0 failed (45 unit + 13 integration)
+- Function tests: 16 passed, 4 skipped (seasonal date-injection gap — unrelated to EF Core)
+- Total: 74 passed, 4 skipped, 0 failed
