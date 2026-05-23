@@ -32,3 +32,11 @@
 - **POST /products** automatically creates a `ProductInventory` record (qty=0, threshold=5) in the same request.
 - **Soft delete** sets `IsActive = false` and calls `UpdateAsync` — global query filter then hides the record automatically.
 - **CategoryDto** placed in `src/OutdoorsShop.Core/DTOs/Products/` alongside other product DTOs.
+
+### 2026-05-23 — Auth endpoints
+- AuthController was pre-scaffolded with register/login/refresh; added Logout and GET /me
+- Refresh token stored as hash in AspNetUserTokens table (provider=OutdoorsShop, name=RefreshTokenHash)
+- `.Result` inside LINQ on Identity Users = deadlock risk; fix is ToList() + async foreach
+- AsAsyncEnumerable() requires EF Core using directive — not available in API layer without adding EF Core dep; ToList() is the safe alternative
+- Logout: removes token hash from AspNetUserTokens + expires cookie with past date
+- UserProfileDto lives in Core.DTOs.Auth
