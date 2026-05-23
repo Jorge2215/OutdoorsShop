@@ -60,3 +60,12 @@
 - **Order creation path:** `OrderService.CreateAsync` validates active products, checks inventory, enforces current catalog pricing against submitted `UnitPrice`, creates `SalesOrder` + `SalesOrderDetail`, and decrements stock inside one EF Core transaction.
 - **Report export pattern:** `ReportsController` gets row DTOs from services and handles file formatting with `CsvHelper` + `ClosedXML`; file generation stays in API, data shaping stays in services.
 - **Key file paths:** `src/OutdoorsShop.Api/Controllers/CustomersController.cs`, `src/OutdoorsShop.Api/Controllers/OrdersController.cs`, `src/OutdoorsShop.Api/Controllers/InventoryController.cs`, `src/OutdoorsShop.Api/Controllers/ReportsController.cs`, `src/OutdoorsShop.Infrastructure/Services/OrderService.cs`.
+
+### 2026-05-23T20:39:55.398-03:00 — GitHub Actions CI/CD workflows
+
+- **Three workflows created** in `.github/workflows/`: `backend.yml`, `frontend.yml`, `functions.yml`.
+- **Solution file is `OutdoorsShop.slnx`** (not `.sln`) at repo root — dotnet CLI commands reference this path, not `src/OutdoorsShop.sln`.
+- **backend.yml**: triggers on push/PR to `main`/`dev` for `src/**`; restores, builds, and tests the full solution; uploads `.trx` results as artifact; writes passed/failed/skipped table to job summary.
+- **frontend.yml**: triggers on push/PR to `main`/`dev` for `frontend/**`; runs `npm ci` + `npm run build`; uploads `frontend/dist` as artifact. Uses npm cache keyed on `frontend/package-lock.json`.
+- **functions.yml**: triggers on push/PR to `main`/`dev` for `src/OutdoorsShop.Functions/**`; builds only the Functions project; runs all tests in `OutdoorsShop.Tests`; publishes Functions artifact to `publish/functions` with a placeholder comment for Azure deploy step.
+- **All workflows**: `permissions: contents: read`, `actions/checkout@v4`, `actions/setup-dotnet@v4` (`10.x`), `actions/setup-node@v4` (`20`), `concurrency` groups with `cancel-in-progress: true`, badge comment at top of each file.

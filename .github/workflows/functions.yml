@@ -1,0 +1,60 @@
+# Status badge: ![Functions CI](https://github.com/Jorge2215/OutdoorsShop/actions/workflows/functions.yml/badge.svg)
+
+name: Functions CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'src/OutdoorsShop.Functions/**'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'src/OutdoorsShop.Functions/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: functions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore NuGet packages
+        run: dotnet restore src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj
+
+      - name: Build Functions project
+        run: dotnet build src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj --no-restore
+
+      - name: Run tests (Functions category)
+        run: dotnet test src/OutdoorsShop.Tests/OutdoorsShop.Tests.csproj --verbosity normal --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-test-results
+          path: TestResults/*.trx
+
+      - name: Publish Functions artifact
+        run: dotnet publish src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj --configuration Release --output publish/functions
+
+      - name: Upload Functions publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-publish
+          path: publish/functions
+          # TODO: Add Azure Functions deploy step here using publish profile secret
+          # See: https://learn.microsoft.com/azure/azure-functions/functions-how-to-github-actions
