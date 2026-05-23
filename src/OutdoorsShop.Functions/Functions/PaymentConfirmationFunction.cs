@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using OutdoorsShop.Core.Enums;
 using OutdoorsShop.Infrastructure.Data;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OutdoorsShop.Functions.Functions;
 
@@ -19,47 +20,106 @@ public class PaymentConfirmationFunction
     }
 
     /// <summary>
-    /// Triggered by messages on the 'payment-results' queue.
-    /// Updates SalesOrder.PaymentStatus based on the payment result.
+    /// Triggered by messages on the 'payment-confirmations' queue.
+    /// Updates order status and payment fields; restores inventory on payment failure.
     /// </summary>
     [Function("PaymentConfirmation")]
-    public async Task Run([QueueTrigger("payment-results")] string queueMessage)
+    public async Task Run([QueueTrigger("payment-confirmations", Connection = "AzureWebJobsStorage")] string queueMessage)
     {
-        _logger.LogInformation("PaymentConfirmation triggered. Message: {Message}", queueMessage);
+        _logger.LogInformation("PaymentConfirmation triggered. Message length: {Length}", queueMessage.Length);
 
-        PaymentResultMessage? message;
+        PaymentConfirmationMessage? message;
         try
         {
-            message = JsonSerializer.Deserialize<PaymentResultMessage>(queueMessage);
+            message = JsonSerializer.Deserialize<PaymentConfirmationMessage>(queueMessage,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to deserialize payment result message.");
+            _logger.LogError(ex, "Failed to deserialize payment confirmation message.");
             return;
         }
 
         if (message is null)
         {
-            _logger.LogWarning("Received null payment result message.");
+            _logger.LogWarning("Received null payment confirmation message.");
             return;
         }
 
-        var order = await _dbContext.Orders.FindAsync(message.OrderId);
+        var order = await _dbContext.Orders
+            .Include(o => o.Details)
+            .FirstOrDefaultAsync(o => o.OrderID == message.OrderId);
+
         if (order is null)
         {
-            _logger.LogWarning("Order {OrderId} not found for payment update.", message.OrderId);
+            _logger.LogWarning("Order {OrderId} not found for payment confirmation.", message.OrderId);
             return;
         }
 
-        order.PaymentStatus = message.Success ? PaymentStatus.Confirmed : PaymentStatus.Failed;
+        switch (message.PaymentStatus)
+        {
+            case "Success":
+                order.Status = OrderStatus.Processing;
+                order.PaymentStatus = PaymentStatus.Confirmed;
+                order.PaymentReference = message.PaymentReference;
+                order.PaidAt = message.ProcessedAt;
+                _logger.LogInformation(
+                    "Order {OrderId} confirmed. Reference: {Ref}, Amount: {Amount}",
+                    order.OrderID, message.PaymentReference, message.Amount);
+                break;
 
-        if (message.Success)
-            order.Status = OrderStatus.Processing;
+            case "Failed":
+                order.Status = OrderStatus.Cancelled;
+                order.PaymentStatus = PaymentStatus.Failed;
+                await RestoreInventoryAsync(order.Details);
+                _logger.LogInformation("Order {OrderId} cancelled due to payment failure.", order.OrderID);
+                break;
+
+            case "Pending":
+                _logger.LogInformation(
+                    "Order {OrderId} payment still pending. No action taken (would re-enqueue).",
+                    order.OrderID);
+                return;
+
+            default:
+                _logger.LogWarning(
+                    "Unknown paymentStatus '{Status}' for Order {OrderId}.",
+                    message.PaymentStatus, order.OrderID);
+                return;
+        }
 
         await _dbContext.SaveChangesAsync();
+        _logger.LogInformation(
+            "Order {OrderId} saved with status {Status}.", order.OrderID, order.Status);
+    }
 
-        _logger.LogInformation("Order {OrderId} PaymentStatus updated to {PaymentStatus}.", order.OrderID, order.PaymentStatus);
+    private async Task RestoreInventoryAsync(IEnumerable<Core.Entities.SalesOrderDetail> details)
+    {
+        foreach (var detail in details)
+        {
+            var inventory = await _dbContext.Inventory.FindAsync(detail.ProductID);
+            if (inventory is not null)
+            {
+                inventory.QuantityAvailable += detail.Quantity;
+                inventory.LastUpdated = DateTime.UtcNow;
+                _logger.LogInformation(
+                    "Restored {Qty} units to Product {ProductId}. New stock: {Stock}",
+                    detail.Quantity, detail.ProductID, inventory.QuantityAvailable);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "No inventory record found for Product {ProductId} during restore.",
+                    detail.ProductID);
+            }
+        }
     }
 }
 
-public record PaymentResultMessage(int OrderId, bool Success);
+public record PaymentConfirmationMessage(
+    [property: JsonPropertyName("orderId")] int OrderId,
+    [property: JsonPropertyName("paymentReference")] string PaymentReference,
+    [property: JsonPropertyName("paymentStatus")] string PaymentStatus,
+    [property: JsonPropertyName("amount")] decimal Amount,
+    [property: JsonPropertyName("processedAt")] DateTimeOffset ProcessedAt
+);

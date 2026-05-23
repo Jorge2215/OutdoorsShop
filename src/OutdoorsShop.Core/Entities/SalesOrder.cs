@@ -23,6 +23,10 @@ public class SalesOrder
 
     public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;
 
+    public string? PaymentReference { get; set; }
+
+    public DateTimeOffset? PaidAt { get; set; }
+
     // Navigation properties
     public Customer Customer { get; set; } = null!;
     public ICollection<SalesOrderDetail> Details { get; set; } = new List<SalesOrderDetail>();

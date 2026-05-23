@@ -1,8 +1,10 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using OutdoorsShop.Core.Entities;
 using OutdoorsShop.Infrastructure.Data;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OutdoorsShop.Functions.Functions;
 
@@ -19,17 +21,18 @@ public class StockUpdateFunction
 
     /// <summary>
     /// Triggered by messages on the 'stock-updates' queue.
-    /// Adjusts ProductInventory.QuantityAvailable and logs a reorder alert if stock is low.
+    /// Adjusts ProductInventory.QuantityAvailable, clamps to 0, logs movement, and warns on low stock.
     /// </summary>
     [Function("StockUpdate")]
-    public async Task Run([QueueTrigger("stock-updates")] string queueMessage)
+    public async Task Run([QueueTrigger("stock-updates", Connection = "AzureWebJobsStorage")] string queueMessage)
     {
-        _logger.LogInformation("StockUpdate triggered. Message: {Message}", queueMessage);
+        _logger.LogInformation("StockUpdate triggered. Message length: {Length}", queueMessage.Length);
 
         StockUpdateMessage? message;
         try
         {
-            message = JsonSerializer.Deserialize<StockUpdateMessage>(queueMessage);
+            message = JsonSerializer.Deserialize<StockUpdateMessage>(queueMessage,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }
         catch (JsonException ex)
         {
@@ -44,31 +47,56 @@ public class StockUpdateFunction
         }
 
         var inventory = await _dbContext.Inventory.FindAsync(message.ProductId);
+
         if (inventory is null)
         {
-            _logger.LogWarning("Inventory record for Product {ProductId} not found.", message.ProductId);
-            return;
+            _logger.LogInformation(
+                "No inventory record for Product {ProductId}. Creating one.", message.ProductId);
+            inventory = new ProductInventory
+            {
+                ProductID = message.ProductId,
+                QuantityAvailable = 0,
+                ReorderThreshold = 5,
+                LastUpdated = DateTime.UtcNow
+            };
+            _dbContext.Inventory.Add(inventory);
         }
 
-        inventory.QuantityAvailable += message.QuantityDelta;
+        var previousQty = inventory.QuantityAvailable;
+        inventory.QuantityAvailable = Math.Max(0, inventory.QuantityAvailable + message.QuantityDelta);
         inventory.LastUpdated = DateTime.UtcNow;
 
-        if (inventory.QuantityAvailable < 0)
-            inventory.QuantityAvailable = 0;
+        var log = new StockUpdateLog
+        {
+            Id = Guid.NewGuid(),
+            ProductId = message.ProductId,
+            QuantityDelta = message.QuantityDelta,
+            ResultingQuantity = inventory.QuantityAvailable,
+            Reason = message.Reason,
+            Notes = message.Notes,
+            UpdatedAt = message.UpdatedAt
+        };
+        _dbContext.StockUpdateLogs.Add(log);
 
         if (inventory.QuantityAvailable <= inventory.ReorderThreshold)
         {
             _logger.LogWarning(
-                "LOW STOCK ALERT: Product {ProductId} has {Quantity} units available (threshold: {Threshold}).",
+                "⚠️ Low stock alert: Product {ProductId}, quantity {Qty} (threshold: {Threshold})",
                 message.ProductId, inventory.QuantityAvailable, inventory.ReorderThreshold);
         }
 
         await _dbContext.SaveChangesAsync();
 
         _logger.LogInformation(
-            "Inventory updated for Product {ProductId}. New quantity: {Quantity}.",
-            message.ProductId, inventory.QuantityAvailable);
+            "Stock updated for Product {ProductId}. {PreviousQty} → {NewQty} (delta: {Delta}, reason: {Reason})",
+            message.ProductId, previousQty, inventory.QuantityAvailable, message.QuantityDelta, message.Reason);
     }
 }
 
-public record StockUpdateMessage(int ProductId, int QuantityDelta);
+public record StockUpdateMessage(
+    [property: JsonPropertyName("productId")] int ProductId,
+    [property: JsonPropertyName("quantityDelta")] int QuantityDelta,
+    [property: JsonPropertyName("reason")] string Reason,
+    [property: JsonPropertyName("notes")] string? Notes,
+    [property: JsonPropertyName("updatedAt")] DateTimeOffset UpdatedAt
+);

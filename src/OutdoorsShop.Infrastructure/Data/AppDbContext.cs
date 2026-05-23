@@ -16,6 +16,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<SalesOrder> Orders { get; set; }
     public DbSet<SalesOrderDetail> OrderItems { get; set; }
     public DbSet<ProductInventory> Inventory { get; set; }
+    public DbSet<StockUpdateLog> StockUpdateLogs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -33,6 +34,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Product>()
             .Property(p => p.Price)
             .HasColumnType("decimal(18,2)");
+
+        builder.Entity<Product>()
+            .Property(p => p.DiscountMultiplier)
+            .HasColumnType("decimal(5,4)")
+            .HasDefaultValue(1.0m);
 
         builder.Entity<SalesOrder>()
             .Property(o => o.TotalAmount)
@@ -107,5 +113,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             new ProductCategory { CategoryID = 3, Name = "Cycling", IsActive = true },
             new ProductCategory { CategoryID = 4, Name = "Climbing", IsActive = true }
         );
+
+        builder.Entity<StockUpdateLog>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Reason).HasMaxLength(50).IsRequired();
+            entity.Property(s => s.Notes).HasMaxLength(500);
+            entity.ToTable("StockUpdateLogs");
+        });
     }
 }

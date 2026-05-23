@@ -19,6 +19,8 @@ public class Product
 
     public bool IsActive { get; set; } = true;
 
+    public decimal DiscountMultiplier { get; set; } = 1.0m;
+
     // Navigation properties
     public ProductCategory Category { get; set; } = null!;
     public ICollection<SalesOrderDetail> SalesOrderDetails { get; set; } = new List<SalesOrderDetail>();
