@@ -99,18 +99,78 @@ public class AuthController : ControllerBase
         if (string.IsNullOrEmpty(refreshToken))
             return Unauthorized();
 
-        // Validate stored refresh token hash
         var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(refreshToken)));
-        // Find user by refresh token (stored as provider token)
-        var user = _userManager.Users.FirstOrDefault(u =>
-            _userManager.GetAuthenticationTokenAsync(u, "OutdoorsShop", "RefreshTokenHash").Result == tokenHash);
 
+        // Load users into memory first, then match the refresh token hash asynchronously
+        var users = _userManager.Users.ToList();
+        ApplicationUser? matchedUser = null;
+        foreach (var u in users)
+        {
+            var stored = await _userManager.GetAuthenticationTokenAsync(u, "OutdoorsShop", "RefreshTokenHash");
+            if (stored == tokenHash)
+            {
+                matchedUser = u;
+                break;
+            }
+        }
+
+        if (matchedUser is null)
+            return Unauthorized();
+
+        var token = await GenerateTokenAsync(matchedUser);
+        SetRefreshTokenCookie(token.RefreshToken, _jwtSettings.RefreshTokenExpirationDays);
+        return Ok(token);
+    }
+
+    /// <summary>Logout — revokes the refresh token and clears the cookie.</summary>
+    [HttpPost("logout")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Logout()
+    {
+        var userId = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (userId is not null)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user is not null)
+                await _userManager.RemoveAuthenticationTokenAsync(user, "OutdoorsShop", "RefreshTokenHash");
+        }
+
+        // Expire the cookie immediately
+        Response.Cookies.Append("refreshToken", string.Empty, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Expires = DateTimeOffset.UtcNow.AddDays(-1)
+        });
+
+        return NoContent();
+    }
+
+    /// <summary>Returns the authenticated user's profile.</summary>
+    [HttpGet("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Me()
+    {
+        var userId = User.FindFirstValue(JwtRegisteredClaimNames.Sub)!;
+        var user = await _userManager.FindByIdAsync(userId);
         if (user is null)
             return Unauthorized();
 
-        var token = await GenerateTokenAsync(user);
-        SetRefreshTokenCookie(token.RefreshToken, _jwtSettings.RefreshTokenExpirationDays);
-        return Ok(token);
+        var roles = await _userManager.GetRolesAsync(user);
+        var customer = await _customerRepository.GetByUserIdAsync(userId);
+
+        return Ok(new UserProfileDto
+        {
+            UserId = userId,
+            Email = user.Email!,
+            Name = customer?.Name ?? user.UserName ?? string.Empty,
+            CustomerID = customer?.CustomerID,
+            Roles = [.. roles]
+        });
     }
 
     private async Task<TokenDto> GenerateTokenAsync(ApplicationUser user)
