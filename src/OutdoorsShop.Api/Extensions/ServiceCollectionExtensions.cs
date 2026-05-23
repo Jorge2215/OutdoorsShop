@@ -16,8 +16,15 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddDatabase(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")));
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+
+        // Skip SQL Server registration when connection string is absent — allows test infrastructure
+        // to register its own database provider (e.g. SQLite in-memory) without a multi-provider conflict.
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            services.AddDbContext<AppDbContext>(options =>
+                options.UseSqlServer(connectionString));
+        }
 
         return services;
     }
@@ -50,6 +57,10 @@ public static class ServiceCollectionExtensions
         })
         .AddJwtBearer(options =>
         {
+            // Disable automatic claim name mapping so JWT short names (e.g. "sub") are preserved.
+            // Controllers rely on JwtRegisteredClaimNames.Sub; with mapping enabled the claim would
+            // be stored under the long ClaimTypes.NameIdentifier URI and be invisible by short name.
+            options.MapInboundClaims = false;
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,

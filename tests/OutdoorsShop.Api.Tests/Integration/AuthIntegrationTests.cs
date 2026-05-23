@@ -7,23 +7,10 @@ using System.Text.Json;
 namespace OutdoorsShop.Api.Tests.Integration;
 
 /// <summary>
-/// Integration tests using WebApplicationFactory + InMemory EF Core.
-///
-/// NOTE: These tests are currently skipped due to an EF Core 10.0 multi-provider
-/// conflict: when WebApplicationFactory replaces SqlServer with InMemory, EF Core
-/// detects both providers registered in the application service provider and throws
-/// "Only a single database provider can be registered in a service provider."
-///
-/// Remediation tracked in .squad/decisions/inbox/creta-test-strategy.md.
-/// Short-term fix: use SQLite in-memory (single provider replacement) or
-/// introduce IDbContextFactory that bypasses the conflict.
+/// Integration tests for Auth endpoints using WebApplicationFactory + SQLite in-memory EF Core.
 /// </summary>
 public class AuthIntegrationTests : IClassFixture<TestWebAppFactory>
 {
-    private const string SkipReason =
-        "EF Core 10.0 multi-provider conflict when replacing SqlServer with InMemory in WebApplicationFactory. " +
-        "See .squad/decisions/inbox/creta-test-strategy.md for remediation plan.";
-
     private readonly TestWebAppFactory _factory;
 
     public AuthIntegrationTests(TestWebAppFactory factory)
@@ -31,7 +18,7 @@ public class AuthIntegrationTests : IClassFixture<TestWebAppFactory>
         _factory = factory;
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task Register_ReturnsOk_WithAccessToken()
     {
         var client = _factory.CreateClient();
@@ -52,7 +39,7 @@ public class AuthIntegrationTests : IClassFixture<TestWebAppFactory>
         doc.RootElement.GetProperty("accessToken").GetString().Should().NotBeNullOrEmpty();
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task Login_ReturnsOk_WithValidCredentials()
     {
         var client = _factory.CreateClient();
@@ -69,7 +56,7 @@ public class AuthIntegrationTests : IClassFixture<TestWebAppFactory>
         doc.RootElement.GetProperty("accessToken").GetString().Should().NotBeNullOrEmpty();
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task Login_Returns401_WithInvalidCredentials()
     {
         var client = _factory.CreateClient();
@@ -82,7 +69,7 @@ public class AuthIntegrationTests : IClassFixture<TestWebAppFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task FullFlow_RegisterLoginAndCallProtectedEndpoint()
     {
         var client = _factory.CreateClient();
@@ -116,7 +103,7 @@ public class AuthIntegrationTests : IClassFixture<TestWebAppFactory>
         meDoc.RootElement.GetProperty("email").GetString().Should().Be(uniqueEmail);
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task ProtectedEndpoint_Returns401_WhenNoToken()
     {
         var client = _factory.CreateClient();
@@ -125,7 +112,7 @@ public class AuthIntegrationTests : IClassFixture<TestWebAppFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    [Fact(Skip = SkipReason)]
+    [Fact]
     public async Task ProtectedEndpoint_Returns401_WhenTokenExpiredOrInvalid()
     {
         var client = _factory.CreateClient();

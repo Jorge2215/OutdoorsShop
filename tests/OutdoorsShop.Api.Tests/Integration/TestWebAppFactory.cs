@@ -2,9 +2,11 @@ using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using OutdoorsShop.Core.Entities;
 using OutdoorsShop.Core.Interfaces;
@@ -16,26 +18,49 @@ using System.Text.Json;
 namespace OutdoorsShop.Api.Tests.Integration;
 
 /// <summary>
-/// WebApplicationFactory that replaces SQL Server with an in-memory EF Core database
+/// WebApplicationFactory that replaces SQL Server with a SQLite in-memory database
 /// and seeds test data for integration tests.
+///
+/// EF Core 10.0 multi-provider fix:
+///   - Connection string is blanked via UseSetting so AddDatabase in Program.cs
+///     skips UseSqlServer registration entirely (no SQL Server in the DI container).
+///   - This factory then registers UseSqlite as the sole provider.
+///   - Schema creation and seeding occur in CreateHost, after the final service
+///     provider is fully built (so Identity services are available for user seeding).
 /// </summary>
 public class TestWebAppFactory : WebApplicationFactory<Program>
 {
+    // Keep the connection open for the factory lifetime — SQLite in-memory
+    // databases are destroyed when their connection closes.
+    private readonly SqliteConnection _connection = new("DataSource=:memory:");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Clear blob storage connection string so AddBlobStorage falls back to
-        // "UseDevelopmentStorage=true", which creates the client without network calls.
+        _connection.Open();
+
+        // Blank the DB connection string → AddDatabase in Program.cs hits the null-guard
+        // and skips UseSqlServer, so only the SQLite provider registered below is present.
+        builder.UseSetting("ConnectionStrings:DefaultConnection", "");
+
+        // Blank blob connection string → AddBlobStorage falls back to UseDevelopmentStorage=true
+        // (valid Azurite format that doesn't require a running emulator).
         builder.UseSetting("AzureStorage:ConnectionString", "");
+
+        builder.UseEnvironment("Development");
 
         builder.ConfigureServices(services =>
         {
-            // Replace SQL Server with InMemory
-            services.RemoveAll<DbContextOptions<AppDbContext>>();
-            services.RemoveAll<AppDbContext>();
+            // Register SQLite in-memory as the sole EF Core provider.
+            // Program.cs's AddDatabase has already been skipped (empty connection string),
+            // so there is no SQL Server provider to conflict with.
             services.AddDbContext<AppDbContext>(options =>
-                options.UseInMemoryDatabase("TestDb-" + Guid.NewGuid()));
+            {
+                options.UseSqlite(_connection);
+                options.EnableSensitiveDataLogging();
+                options.EnableDetailedErrors();
+            });
 
-            // Replace blob storage with a no-op mock to avoid requiring Azure Storage emulator
+            // Replace blob storage with a no-op mock to avoid requiring Azure Storage emulator.
             services.RemoveAll<BlobServiceClient>();
             services.RemoveAll<IBlobStorageService>();
             var blobMock = new Mock<IBlobStorageService>();
@@ -47,17 +72,29 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 .Returns(Task.CompletedTask);
             services.AddSingleton(blobMock.Object);
         });
+    }
 
-        builder.UseEnvironment("Development");
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
 
-        builder.ConfigureServices(services =>
-        {
-            var sp = services.BuildServiceProvider();
-            using var scope = sp.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Database.EnsureCreated();
-            SeedTestData(scope.ServiceProvider).GetAwaiter().GetResult();
-        });
+        // Create schema and seed data AFTER the host is fully built so Identity services
+        // (UserManager, RoleManager) are available in the service provider.
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // EnsureCreated builds the schema from the EF model — correct for SQLite test environments.
+        // Do NOT use Migrate() — SQLite doesn't support all SQL Server migration syntax.
+        db.Database.EnsureCreated();
+        SeedTestData(scope.ServiceProvider).GetAwaiter().GetResult();
+
+        return host;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing)
+            _connection.Dispose();
     }
 
     private static async Task SeedTestData(IServiceProvider sp)
@@ -73,7 +110,7 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 await roleManager.CreateAsync(new IdentityRole(role));
         }
 
-        // Seed categories (InMemory does not apply HasData seed, so insert manually)
+        // Seed categories (SQLite does not apply HasData seed, so insert manually)
         if (!db.Categories.Any())
         {
             db.Categories.AddRange(
