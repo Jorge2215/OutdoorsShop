@@ -40,3 +40,11 @@
 - AsAsyncEnumerable() requires EF Core using directive — not available in API layer without adding EF Core dep; ToList() is the safe alternative
 - Logout: removes token hash from AspNetUserTokens + expires cookie with past date
 - UserProfileDto lives in Core.DTOs.Auth
+
+### 2026-05-23T14:02:03.844-03:00 — Remaining backend endpoints
+- **Service layer added for protected business rules:** `CustomerService`, `OrderService`, and `InventoryService` live in `src/OutdoorsShop.Infrastructure/Services/` and are wired in `src/OutdoorsShop.Api/Extensions/ServiceCollectionExtensions.cs` via `AddDomainServices()`.
+- **Pagination contract:** shared `PagedResult<T>` lives in `src/OutdoorsShop.Core/DTOs/Common/`; Customers, Orders, and Inventory list endpoints now return paged payloads instead of raw collections.
+- **Customer ownership check:** controllers read JWT `customer_id`, but the allow/deny decision happens inside `ICustomerService` / `IOrderService`; controllers only translate service results to HTTP responses.
+- **Order creation path:** `OrderService.CreateAsync` validates active products, checks inventory, enforces current catalog pricing against submitted `UnitPrice`, creates `SalesOrder` + `SalesOrderDetail`, and decrements stock inside one EF Core transaction.
+- **Report export pattern:** `ReportsController` gets row DTOs from services and handles file formatting with `CsvHelper` + `ClosedXML`; file generation stays in API, data shaping stays in services.
+- **Key file paths:** `src/OutdoorsShop.Api/Controllers/CustomersController.cs`, `src/OutdoorsShop.Api/Controllers/OrdersController.cs`, `src/OutdoorsShop.Api/Controllers/InventoryController.cs`, `src/OutdoorsShop.Api/Controllers/ReportsController.cs`, `src/OutdoorsShop.Infrastructure/Services/OrderService.cs`.

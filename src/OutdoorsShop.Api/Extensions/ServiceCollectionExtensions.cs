@@ -77,6 +77,15 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddDomainServices(this IServiceCollection services)
+    {
+        services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IInventoryService, InventoryService>();
+
+        return services;
+    }
+
     public static IServiceCollection AddBlobStorage(this IServiceCollection services, IConfiguration configuration)
     {
         var connectionString = configuration["AzureStorage:ConnectionString"];

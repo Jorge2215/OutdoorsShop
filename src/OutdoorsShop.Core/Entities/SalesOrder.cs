@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using OutdoorsShop.Core.Enums;
 
 namespace OutdoorsShop.Core.Entities;
@@ -9,6 +10,12 @@ public class SalesOrder
     public int CustomerID { get; set; }
 
     public DateTime OrderDate { get; set; }
+
+    [Required]
+    public string ShippingAddress { get; set; } = string.Empty;
+
+    [Required]
+    public string PaymentMethod { get; set; } = string.Empty;
 
     public decimal TotalAmount { get; set; }
 

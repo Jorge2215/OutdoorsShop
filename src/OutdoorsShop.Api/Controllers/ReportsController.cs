@@ -1,54 +1,99 @@
+using ClosedXML.Excel;
+using CsvHelper;
+using CsvHelper.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OutdoorsShop.Core.DTOs.Reports;
 using OutdoorsShop.Core.Interfaces;
+using System.Globalization;
 using System.Text;
 
 namespace OutdoorsShop.Api.Controllers;
 
 [ApiController]
-[Route("api/v1/reports")]
+[Route("api/v1/[controller]")]
 [Authorize(Roles = "Administrator")]
-[Produces("text/csv")]
 public class ReportsController : ControllerBase
 {
-    private readonly IOrderRepository _orderRepository;
-    private readonly IInventoryRepository _inventoryRepository;
+    private const string CsvContentType = "text/csv";
+    private const string ExcelContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private readonly IOrderService _orderService;
+    private readonly IInventoryService _inventoryService;
 
-    public ReportsController(IOrderRepository orderRepository, IInventoryRepository inventoryRepository)
+    public ReportsController(IOrderService orderService, IInventoryService inventoryService)
     {
-        _orderRepository = orderRepository;
-        _inventoryRepository = inventoryRepository;
+        _orderService = orderService;
+        _inventoryService = inventoryService;
     }
 
-    /// <summary>Export orders report as CSV (Admin only).</summary>
     [HttpGet("orders")]
-    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
-    public async Task<IActionResult> OrdersReport()
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> OrdersReport([FromQuery] string format = "csv", [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
     {
-        var orders = await _orderRepository.GetAllAsync();
-        var sb = new StringBuilder();
-        sb.AppendLine("OrderID,CustomerID,OrderDate,TotalAmount,Status,PaymentStatus");
+        if (from.HasValue && to.HasValue && from > to)
+            return BadRequest(new { message = "The 'from' date must be earlier than or equal to the 'to' date." });
 
-        foreach (var order in orders)
-            sb.AppendLine($"{order.OrderID},{order.CustomerID},{order.OrderDate:yyyy-MM-dd},{order.TotalAmount},{order.Status},{order.PaymentStatus}");
-
-        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-        return File(bytes, "text/csv", $"orders_{DateTime.UtcNow:yyyyMMdd}.csv");
+        var rows = await _orderService.GetReportRowsAsync(from, to);
+        return CreateReportResult(format, rows, "orders-report");
     }
 
-    /// <summary>Export inventory report as CSV (Admin only).</summary>
     [HttpGet("inventory")]
-    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
-    public async Task<IActionResult> InventoryReport()
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> InventoryReport([FromQuery] string format = "csv")
     {
-        var items = await _inventoryRepository.GetAllAsync();
-        var sb = new StringBuilder();
-        sb.AppendLine("ProductID,ProductName,QuantityAvailable,ReorderThreshold,LastUpdated");
+        var rows = await _inventoryService.GetReportRowsAsync();
+        return CreateReportResult(format, rows, "inventory-report");
+    }
 
-        foreach (var item in items)
-            sb.AppendLine($"{item.ProductID},{item.Product?.Name},{item.QuantityAvailable},{item.ReorderThreshold},{item.LastUpdated:yyyy-MM-dd}");
+    private IActionResult CreateReportResult<T>(string format, IReadOnlyList<T> rows, string fileNamePrefix)
+    {
+        var normalizedFormat = format.Trim().ToLowerInvariant();
+        return normalizedFormat switch
+        {
+            "csv" => File(BuildCsv(rows), CsvContentType, $"{fileNamePrefix}.csv"),
+            "excel" => File(BuildExcel(rows, fileNamePrefix), ExcelContentType, $"{fileNamePrefix}.xlsx"),
+            _ => BadRequest(new { message = "Supported formats are csv and excel." })
+        };
+    }
 
-        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-        return File(bytes, "text/csv", $"inventory_{DateTime.UtcNow:yyyyMMdd}.csv");
+    private static byte[] BuildCsv<T>(IReadOnlyList<T> rows)
+    {
+        using var stringWriter = new StringWriter(CultureInfo.InvariantCulture);
+        using var csv = new CsvWriter(stringWriter, new CsvConfiguration(CultureInfo.InvariantCulture));
+        csv.WriteHeader<T>();
+        csv.NextRecord();
+        csv.WriteRecords(rows);
+        return Encoding.UTF8.GetBytes(stringWriter.ToString());
+    }
+
+    private static byte[] BuildExcel<T>(IReadOnlyList<T> rows, string worksheetName)
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add(NormalizeWorksheetName(worksheetName));
+
+        if (rows.Count > 0)
+        {
+            worksheet.Cell(1, 1).InsertTable(rows);
+        }
+        else
+        {
+            var properties = typeof(T).GetProperties();
+            for (var index = 0; index < properties.Length; index++)
+                worksheet.Cell(1, index + 1).Value = properties[index].Name;
+        }
+
+        worksheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    private static string NormalizeWorksheetName(string value)
+    {
+        var sanitized = value.Replace('-', ' ');
+        return sanitized.Length <= 31 ? sanitized : sanitized[..31];
     }
 }

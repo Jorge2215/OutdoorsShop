@@ -22,6 +22,7 @@ builder.Services.AddAuthorization();
 
 // Repositories
 builder.Services.AddRepositories();
+builder.Services.AddDomainServices();
 
 // Blob Storage
 builder.Services.AddBlobStorage(builder.Configuration);

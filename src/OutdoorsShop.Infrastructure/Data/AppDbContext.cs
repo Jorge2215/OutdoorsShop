@@ -21,18 +21,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     {
         base.OnModelCreating(builder);
 
-        // Explicit primary keys (non-conventional names)
         builder.Entity<ProductCategory>().HasKey(c => c.CategoryID);
         builder.Entity<SalesOrder>().HasKey(o => o.OrderID);
         builder.Entity<SalesOrderDetail>().HasKey(d => d.OrderDetailID);
 
-        // Table name overrides
         builder.Entity<ProductCategory>().ToTable("Categories");
         builder.Entity<SalesOrder>().ToTable("Orders");
         builder.Entity<SalesOrderDetail>().ToTable("OrderItems");
         builder.Entity<ProductInventory>().ToTable("Inventory");
 
-        // Decimal precision
         builder.Entity<Product>()
             .Property(p => p.Price)
             .HasColumnType("decimal(18,2)");
@@ -41,11 +38,18 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             .Property(o => o.TotalAmount)
             .HasColumnType("decimal(18,2)");
 
+        builder.Entity<SalesOrder>()
+            .Property(o => o.PaymentMethod)
+            .HasMaxLength(100);
+
+        builder.Entity<SalesOrder>()
+            .Property(o => o.ShippingAddress)
+            .HasMaxLength(500);
+
         builder.Entity<SalesOrderDetail>()
             .Property(d => d.UnitPrice)
             .HasColumnType("decimal(18,2)");
 
-        // Enum conversions stored as strings for readability
         builder.Entity<SalesOrder>()
             .Property(o => o.Status)
             .HasConversion<string>();
@@ -54,7 +58,32 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             .Property(o => o.PaymentStatus)
             .HasConversion<string>();
 
-        // ProductInventory — ProductID is both PK and FK (1:1 with Product)
+        builder.Entity<Customer>()
+            .Property(c => c.FirstName)
+            .HasMaxLength(100);
+
+        builder.Entity<Customer>()
+            .Property(c => c.LastName)
+            .HasMaxLength(100);
+
+        builder.Entity<Customer>()
+            .Property(c => c.Phone)
+            .HasMaxLength(50);
+
+        builder.Entity<Customer>()
+            .Property(c => c.Address)
+            .HasMaxLength(500);
+
+        builder.Entity<Customer>()
+            .HasIndex(c => c.UserId)
+            .IsUnique();
+
+        builder.Entity<Customer>()
+            .HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(c => c.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Entity<ProductInventory>()
             .HasKey(i => i.ProductID);
 
@@ -63,14 +92,15 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             .WithOne()
             .HasForeignKey<ProductInventory>(i => i.ProductID);
 
-        // Global query filters for soft deletes
         builder.Entity<Product>()
             .HasQueryFilter(p => p.IsActive);
 
         builder.Entity<ProductCategory>()
             .HasQueryFilter(c => c.IsActive);
 
-        // Seed initial categories
+        builder.Entity<Customer>()
+            .HasQueryFilter(c => c.IsActive);
+
         builder.Entity<ProductCategory>().HasData(
             new ProductCategory { CategoryID = 1, Name = "Camping", IsActive = true },
             new ProductCategory { CategoryID = 2, Name = "Trekking", IsActive = true },

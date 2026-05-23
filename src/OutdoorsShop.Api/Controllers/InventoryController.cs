@@ -1,59 +1,65 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OutdoorsShop.Core.DTOs.Common;
 using OutdoorsShop.Core.DTOs.Inventory;
 using OutdoorsShop.Core.Interfaces;
 
 namespace OutdoorsShop.Api.Controllers;
 
 [ApiController]
-[Route("api/v1/inventory")]
+[Route("api/v1/[controller]")]
 [Authorize(Roles = "Administrator")]
 [Produces("application/json")]
 public class InventoryController : ControllerBase
 {
-    private readonly IInventoryRepository _inventoryRepository;
+    private readonly IInventoryService _inventoryService;
 
-    public InventoryController(IInventoryRepository inventoryRepository)
+    public InventoryController(IInventoryService inventoryService)
     {
-        _inventoryRepository = inventoryRepository;
+        _inventoryService = inventoryService;
     }
 
-    /// <summary>Get all inventory records (Admin only).</summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IEnumerable<InventoryDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll()
+    [ProducesResponseType(typeof(PagedResult<InventoryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 20)
     {
-        var items = await _inventoryRepository.GetAllAsync();
-        var dtos = items.Select(i => new InventoryDto
-        {
-            ProductID = i.ProductID,
-            ProductName = i.Product?.Name ?? string.Empty,
-            QuantityAvailable = i.QuantityAvailable,
-            LastUpdated = i.LastUpdated,
-            ReorderThreshold = i.ReorderThreshold
-        });
-        return Ok(dtos);
+        var result = await _inventoryService.GetPagedAsync(pageNumber, pageSize);
+        return Ok(result);
     }
 
-    /// <summary>Update inventory quantity for a product (Admin only).</summary>
-    [HttpPatch("{productId:int}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateQuantity(int productId, [FromBody] UpdateInventoryDto dto)
+    [HttpGet("low-stock")]
+    [ProducesResponseType(typeof(IEnumerable<InventoryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetLowStock()
     {
-        var inventory = await _inventoryRepository.GetByProductIdAsync(productId);
-        if (inventory is null)
-            return NotFound();
+        var result = await _inventoryService.GetLowStockAsync();
+        return Ok(result);
+    }
 
-        inventory.QuantityAvailable = dto.QuantityAvailable;
-        inventory.ReorderThreshold = dto.ReorderThreshold;
-        inventory.LastUpdated = DateTime.UtcNow;
+    [HttpGet("{productId:int}")]
+    [ProducesResponseType(typeof(InventoryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetByProductId(int productId)
+    {
+        var result = await _inventoryService.GetByProductIdAsync(productId);
+        if (result.NotFound)
+            return NotFound(new { message = result.ErrorMessage });
 
-        await _inventoryRepository.UpdateAsync(inventory);
-        await _inventoryRepository.SaveChangesAsync();
+        return Ok(result.Value);
+    }
 
-        return NoContent();
+    [HttpPut("{productId:int}")]
+    [ProducesResponseType(typeof(InventoryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(int productId, [FromBody] UpdateInventoryDto request)
+    {
+        var result = await _inventoryService.UpdateAsync(productId, request);
+        if (result.NotFound)
+            return NotFound(new { message = result.ErrorMessage });
+
+        if (!result.Succeeded || result.Value is null)
+            return BadRequest(new { message = result.ErrorMessage ?? "Inventory could not be updated." });
+
+        return Ok(result.Value);
     }
 }
-
-public record UpdateInventoryDto(int QuantityAvailable, int ReorderThreshold);
