@@ -3,6 +3,9 @@ using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Identity;
 using OutdoorsShop.Api.Extensions;
 using OutdoorsShop.Api.Middleware;
+using OutdoorsShop.Core.Entities;
+using OutdoorsShop.Core.Interfaces;
+using OutdoorsShop.Infrastructure.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,16 +76,63 @@ app.MapControllers();
 // Health check endpoint
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
-// Seed Identity roles on startup
+// Seed Identity roles and default admin user on startup
 using (var scope = app.Services.CreateScope())
 {
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     foreach (var roleName in new[] { "Administrator", "Customer" })
     {
         if (!await roleManager.RoleExistsAsync(roleName))
         {
             await roleManager.CreateAsync(new IdentityRole(roleName));
+            logger.LogInformation("Seeded role: {Role}", roleName);
         }
+    }
+
+    // Seed default admin user
+    const string adminEmail = "admin@outdoorsshop.dev";
+    const string adminPassword = "Admin@123456";
+    const string adminName = "Admin User";
+
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var existingAdmin = await userManager.FindByEmailAsync(adminEmail);
+    if (existingAdmin is null)
+    {
+        var adminUser = new ApplicationUser
+        {
+            UserName = adminEmail,
+            Email = adminEmail,
+            EmailConfirmed = true
+        };
+
+        var createResult = await userManager.CreateAsync(adminUser, adminPassword);
+        if (createResult.Succeeded)
+        {
+            await userManager.AddToRoleAsync(adminUser, "Administrator");
+
+            var customerRepo = scope.ServiceProvider.GetRequiredService<ICustomerRepository>();
+            var adminCustomer = new Customer
+            {
+                UserId = adminUser.Id,
+                Name = adminName,
+                Email = adminEmail
+            };
+            await customerRepo.AddAsync(adminCustomer);
+            await customerRepo.SaveChangesAsync();
+
+            logger.LogInformation("Admin user seeded: {Email}", adminEmail);
+        }
+        else
+        {
+            logger.LogError("Failed to seed admin user: {Errors}",
+                string.Join(", ", createResult.Errors.Select(e => e.Description)));
+        }
+    }
+    else
+    {
+        logger.LogInformation("Admin user already exists: {Email}", adminEmail);
     }
 }
 
