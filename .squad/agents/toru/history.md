@@ -165,3 +165,28 @@ OutdoorsShop PoC v1.0.0 released to main on 2026-05-23. Tag: v1.0.0.
 - 78 tests passing, 0 skipped, 0 failed
 
 **Decision filed:** `.squad/decisions/inbox/toru-v1-release.md`
+
+---
+
+### 2026-05-23T21:32:34.383-03:00 — Azure dev deployment executed
+
+**SQL strategy chosen:** Reused existing Azure SQL server `azure-sql-pampa.database.windows.net` and database `OutdoorsShopDB` instead of provisioning `sql-outdoors-dev`.
+
+**What was deployed:**
+- Resource group: `rg-outdoors-dev`
+- Monitoring + storage in `eastus`: `appi-outdoors-dev`, `law-outdoors-dev`, `stoutdoorsdev`
+- App tier in `westus3` (quota workaround): `asp-outdoors-dev`, `app-outdoors-api-dev`, `asp-outdoors-func-dev`, `func-outdoors-dev`, `kv-outdoors-dev`
+- API package deployed successfully; verified `https://app-outdoors-api-dev.azurewebsites.net/api/v1/products` returned `200 OK` with `[]`
+- Functions package deployed via blob-backed `WEBSITE_RUN_FROM_PACKAGE`
+
+**Resource URLs:**
+- App Service URL: `https://app-outdoors-api-dev.azurewebsites.net`
+- Functions URL: `https://func-outdoors-dev.azurewebsites.net`
+
+**Issues encountered:**
+- Full `main.bicep` deployment failed in `eastus` because Microsoft.Web server farm quota was `0`; worked around by deploying app-facing modules in `westus3`.
+- App Service initially failed because infra app settings used `Jwt__*` / `Azure__Storage__*` keys while the code expects `JwtSettings__*` / `AzureStorage__*`; module fixed and redeployed.
+- API initially failed with missing `Microsoft.Data.SqlClient` at runtime; publishing Linux-specific packages and adding an explicit `Microsoft.Data.SqlClient` package reference resolved it.
+- Functions host URL still returned `503 Site Unavailable` at the end of this run even though the app resource, package URL, and settings were deployed.
+
+**Decision filed:** `.squad/decisions/inbox/toru-azure-deploy-strategy.md`
