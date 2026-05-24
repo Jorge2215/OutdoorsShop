@@ -30,9 +30,19 @@ param location string = 'eastus'
 @description('SQL Server administrator login name')
 param sqlAdminLogin string = 'sqladmin'
 
+@description('Whether to provision a new Azure SQL Server + Database')
+param deploySql bool = true
+
+@description('Existing SQL Server FQDN to use when deploySql is false')
+param existingSqlServerFqdn string = ''
+
 @description('SQL Server administrator password — never store in source control')
 @secure()
 param sqlAdminPassword string
+
+@description('Existing SQL connection string to store in Key Vault when deploySql is false')
+@secure()
+param existingSqlConnectionString string = ''
 
 @description('JWT signing secret — never store in source control')
 @secure()
@@ -78,7 +88,7 @@ module storage 'modules/storage.bicep' = {
 // Module: Azure SQL Server + Database
 // ---------------------------------------------------------------------------
 
-module sql 'modules/sql.bicep' = {
+module sql 'modules/sql.bicep' = if (deploySql) {
   name: 'sql'
   params: {
     environmentName: environmentName
@@ -87,6 +97,10 @@ module sql 'modules/sql.bicep' = {
     sqlAdminPassword: sqlAdminPassword
   }
 }
+
+var resolvedSqlServerFqdn = deploySql
+  ? sql!.outputs.sqlServerFqdn
+  : existingSqlServerFqdn
 
 // ---------------------------------------------------------------------------
 // Module: App Service Plan + Web API
@@ -116,7 +130,18 @@ module functions 'modules/functions.bicep' = {
     location: location
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     keyVaultName: 'kv-outdoors-${environmentName}'
-    storageAccountName: storage.outputs.storageAccountName
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Module: Azure Static Web App (Free tier, SPA host)
+// ---------------------------------------------------------------------------
+
+module staticwebapp 'modules/staticwebapp.bicep' = {
+  name: 'staticwebapp'
+  params: {
+    environmentName: environmentName
+    location: location
   }
 }
 
@@ -125,8 +150,8 @@ module functions 'modules/functions.bicep' = {
 // Deployed last so it can consume principalIds from App Service and Functions.
 // ---------------------------------------------------------------------------
 
-module keyvault 'modules/keyvault.bicep' = {
-  name: 'keyvault'
+module keyvaultWithNewSql 'modules/keyvault.bicep' = if (deploySql) {
+  name: 'keyvault-new-sql'
   params: {
     environmentName: environmentName
     location: location
@@ -135,6 +160,20 @@ module keyvault 'modules/keyvault.bicep' = {
     sqlAdminPassword: sqlAdminPassword
     jwtSecret: jwtSecret
     sqlConnectionString: sql.outputs.connectionString
+    storageConnectionString: storage.outputs.connectionString
+  }
+}
+
+module keyvaultWithExistingSql 'modules/keyvault.bicep' = if (!deploySql) {
+  name: 'keyvault-existing-sql'
+  params: {
+    environmentName: environmentName
+    location: location
+    appServicePrincipalId: appservice.outputs.principalId
+    functionsPrincipalId: functions.outputs.principalId
+    sqlAdminPassword: sqlAdminPassword
+    jwtSecret: jwtSecret
+    sqlConnectionString: existingSqlConnectionString
     storageConnectionString: storage.outputs.connectionString
   }
 }
@@ -156,7 +195,12 @@ output storageAccountName string = storage.outputs.storageAccountName
 output blobEndpoint string = storage.outputs.blobEndpoint
 
 @description('Key Vault URI')
-output keyVaultUri string = keyvault.outputs.keyVaultUri
+output keyVaultUri string = deploySql
+  ? keyvaultWithNewSql!.outputs.keyVaultUri
+  : keyvaultWithExistingSql!.outputs.keyVaultUri
 
 @description('SQL Server FQDN')
-output sqlServerFqdn string = sql.outputs.sqlServerFqdn
+output sqlServerFqdn string = resolvedSqlServerFqdn
+
+@description('Static Web App URL')
+output staticWebAppUrl string = 'https://${staticwebapp.outputs.defaultHostname}'

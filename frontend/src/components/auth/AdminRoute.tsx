@@ -7,10 +7,8 @@ interface AdminRouteProps {
 }
 
 export function AdminRoute({ children }: AdminRouteProps) {
-  const { isAuthenticated, role } = useAuthStore((state) => ({
-    isAuthenticated: state.isAuthenticated,
-    role: state.role,
-  }))
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const role = useAuthStore((state) => state.role)
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />

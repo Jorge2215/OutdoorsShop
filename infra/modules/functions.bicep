@@ -10,9 +10,6 @@ param appInsightsConnectionString string
 @description('Key Vault name — used to build Key Vault reference strings for app settings')
 param keyVaultName string
 
-@description('Storage account name — used for AzureWebJobsStorage (Functions host storage)')
-param storageAccountName string
-
 var functionsHostingPlanName = 'asp-outdoors-func-${environmentName}'
 var functionAppName = 'func-outdoors-${environmentName}'
 
@@ -30,11 +27,6 @@ resource functionsHostingPlan 'Microsoft.Web/serverfarms@2023-01-01' = {
   }
 }
 
-// Existing storage account — Functions host uses it for triggers, state, and lease management
-resource storageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' existing = {
-  name: storageAccountName
-}
-
 var kvRef = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName='
 
 resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
@@ -48,7 +40,7 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
     serverFarmId: functionsHostingPlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'DOTNET-ISOLATED|10.0'
+      linuxFxVersion: 'DOTNET-ISOLATED|10'
       appSettings: [
         // Functions host runtime
         {

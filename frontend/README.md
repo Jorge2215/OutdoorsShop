@@ -71,3 +71,5 @@ export default defineConfig([
   },
 ])
 ```
+
+<!-- SWA migration 2026-05-24 -->

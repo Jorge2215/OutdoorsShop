@@ -40,12 +40,10 @@ function linkClass(isActive: boolean) {
 export function Header() {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { isAuthenticated, role, user, clearAuth } = useAuthStore((state) => ({
-    isAuthenticated: state.isAuthenticated,
-    role: state.role,
-    user: state.user,
-    clearAuth: state.clearAuth,
-  }))
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const role = useAuthStore((state) => state.role)
+  const user = useAuthStore((state) => state.user)
+  const clearAuth = useAuthStore((state) => state.clearAuth)
   const totalItems = useCartStore((state) => state.totalItems)
 
   const links = useMemo<NavLinkItem[]>(() => {

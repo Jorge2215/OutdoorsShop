@@ -63,8 +63,12 @@ az deployment group create \
   --resource-group rg-outdoors-dev \
   --template-file infra/main.bicep \
   --parameters infra/parameters/dev.bicepparam \
-  --parameters sqlAdminPassword='<strong-password>' jwtSecret='<random-256-bit-secret>'
+  --parameters sqlAdminPassword='<strong-password>' \
+               existingSqlConnectionString='Server=tcp:azure-sql-pampa.database.windows.net,1433;Initial Catalog=OutdoorsShopDB;Persist Security Info=False;User ID=ShopAdmin;Password=<app-password>;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;' \
+               jwtSecret='<random-256-bit-secret>'
 ```
+
+The dev parameters file is configured to **reuse the existing `azure-sql-pampa` SQL server** by default (`deploySql = false`). Set `deploySql = true` if you want Bicep to provision a brand new `sql-outdoors-dev` server and `sqldb-outdoors-dev` database instead.
 
 > **Never** commit `sqlAdminPassword` or `jwtSecret` to source control.  
 > In CI/CD, inject them from GitHub Actions secrets via `--parameters sqlAdminPassword='${{ secrets.SQL_ADMIN_PASSWORD }}'`.
@@ -81,7 +85,7 @@ az deployment group what-if \
 
 ## Post-deployment: EF Core migrations
 
-After the SQL Server and database are created, run EF Core migrations from your local machine or CI pipeline:
+If you deployed a **new** SQL Server and database (`deploySql = true`), run EF Core migrations from your local machine or CI pipeline:
 
 ```bash
 cd src/OutdoorsShop.Api

@@ -70,6 +70,16 @@
 - **functions.yml**: triggers on push/PR to `main`/`dev` for `src/OutdoorsShop.Functions/**`; builds only the Functions project; runs all tests in `OutdoorsShop.Tests`; publishes Functions artifact to `publish/functions` with a placeholder comment for Azure deploy step.
 - **All workflows**: `permissions: contents: read`, `actions/checkout@v4`, `actions/setup-dotnet@v4` (`10.x`), `actions/setup-node@v4` (`20`), `concurrency` groups with `cancel-in-progress: true`, badge comment at top of each file.
 
+### 2026-05-24T00:58:00.000-03:00 — Product & Inventory seed
+
+- **Script location:** `scripts/seed-products.sql` (committed to repo root `/scripts/`)
+- **16 products seeded:** 4 per category (Camping/Trekking/Cycling/Climbing), all `IsActive=1`, `DiscountMultiplier=1.0`.
+- **Inventory column names differ from task spec:** actual DB columns are `QuantityAvailable` (not `QuantityOnHand`) and `ReorderThreshold` (not `ReorderLevel`). Always introspect `INFORMATION_SCHEMA.COLUMNS` before inserting into Inventory.
+- **IDENTITY_INSERT required:** Products table has an IDENTITY PK — `SET IDENTITY_INSERT Products ON/OFF` is needed when seeding with explicit IDs.
+- **Guard clause:** script opens with `IF EXISTS (SELECT 1 FROM Products WHERE IsActive=1) RETURN` to be idempotent.
+- **Verified via API:** `GET https://app-outdoors-api-dev.azurewebsites.net/api/v1/products` returned 16 products after seed.
+- **Credentials path:** ShopAdmin password lives in user secrets (`749208c0-6506-4fba-ac59-228ef8899ee4`) — never committed.
+
 ### 2026-05-23T21:00:31.176-03:00 — TimeProvider injection for date-dependent Azure Functions testing
 
 - **Pattern used:** .NET 8+ `System.TimeProvider` abstract class — the canonical Microsoft abstraction for time. No custom `ITimeProvider` interface needed.
