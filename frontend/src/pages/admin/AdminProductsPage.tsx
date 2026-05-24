@@ -8,6 +8,7 @@ import { Card } from '../../components/ui/Card'
 import { Input, Textarea } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { Spinner } from '../../components/ui/Spinner'
+import { ProductImageUpload } from '../../components/products/ProductImageUpload'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import type { Product, ProductUpsertRequest } from '../../types/product'
 import { formatCurrency } from '../../utils/format'
@@ -158,6 +159,16 @@ export default function AdminProductsPage() {
           <label className="inline-flex items-center gap-3 text-sm font-semibold text-ink md:col-span-2">
             <input type="checkbox" checked={form.isActive ?? true} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} /> Active product
           </label>
+          {editing && (
+            <div className="md:col-span-2">
+              <p className="field-label mb-3">Product image</p>
+              <ProductImageUpload
+                productId={editing.id}
+                currentImageUrl={form.imageUrl ?? null}
+                onUploaded={(newUrl) => setForm((current) => ({ ...current, imageUrl: newUrl }))}
+              />
+            </div>
+          )}
           {actionError ? <div className="md:col-span-2"><Alert tone="error" title="Save failed" message={actionError} /></div> : null}
           <div className="flex justify-end gap-3 md:col-span-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

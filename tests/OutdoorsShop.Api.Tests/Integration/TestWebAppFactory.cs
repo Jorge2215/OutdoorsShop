@@ -70,6 +70,8 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 .ReturnsAsync("https://test.blob.core.windows.net/test/blob?sas=token");
             blobMock.Setup(b => b.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .Returns(Task.CompletedTask);
+            blobMock.Setup(b => b.UploadProductImageAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync("https://test.blob.core.windows.net/product-images/products/1/test.jpg");
             services.AddSingleton(blobMock.Object);
         });
     }

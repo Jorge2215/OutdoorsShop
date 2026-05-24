@@ -111,6 +111,35 @@ export async function requestWithToken<T>(path: string, token: string, init: Req
   return parseResponse<T>(response)
 }
 
+export async function fetchWithAuthMultipart<T>(path: string, body: FormData, retried = false): Promise<T> {
+  const token = useAuthStore.getState().accessToken
+  const headers = new Headers()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(buildApiUrl(path), {
+    method: 'POST',
+    headers,
+    body,
+    credentials: 'include',
+  })
+
+  if (response.status === 401 && !retried) {
+    const refreshed = await useAuthStore.getState().refreshToken()
+    if (refreshed) {
+      return fetchWithAuthMultipart<T>(path, body, true)
+    }
+  }
+
+  if (response.status === 401) {
+    useAuthStore.getState().clearAuth()
+    redirectToLogin()
+  }
+
+  return parseResponse<T>(response)
+}
+
 export async function fetchWithAuth<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const token = useAuthStore.getState().accessToken
 

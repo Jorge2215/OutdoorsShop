@@ -15,10 +15,11 @@ public class ProductsControllerTests
     private readonly Mock<IProductRepository> _productRepo = new();
     private readonly Mock<IInventoryRepository> _inventoryRepo = new();
     private readonly Mock<ICategoryRepository> _categoryRepo = new();
+    private readonly Mock<IBlobStorageService> _blobStorage = new();
 
     private ProductsController CreateController(string role = "Administrator")
     {
-        var controller = new ProductsController(_productRepo.Object, _inventoryRepo.Object, _categoryRepo.Object);
+        var controller = new ProductsController(_productRepo.Object, _inventoryRepo.Object, _categoryRepo.Object, _blobStorage.Object);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
