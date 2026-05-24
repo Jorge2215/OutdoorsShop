@@ -16,3 +16,12 @@
 - 2026-05-24T15:02:56Z — Migrated frontend to Azure Static Web App `app-outdoorsweb-swa`; added infra/modules/staticwebapp.bicep and updated infra/main.bicep; updated GitHub workflow for full CI/CD. Manual step: set `AZURE_STATIC_WEB_APPS_API_TOKEN` in repository secrets.
 
 (Full history archived to 2026-05-24T035031Z-history-archive.md)
+
+- **2026-05-24 — Architecture document:** Created `docs/architecture.md` (comprehensive reference covering all system layers). Committed to `dev` branch.
+  - Confirmed: 4-project solution (`Api`, `Core`, `Infrastructure`, `Functions`); 7 controllers; 4 Azure Functions; Flex Consumption plan.
+  - Confirmed: Frontend uses Zustand in-memory for access tokens (not localStorage); refresh token in HttpOnly cookie.
+  - Confirmed: `staticwebapp.config.json` uses `navigationFallback` for SPA routing — correct SWA behaviour.
+  - Confirmed: `SeasonalDiscountFunction` is a Timer trigger (02:00 UTC daily), not HTTP — task description listed it as HTTP incorrectly.
+  - Confirmed: `stoutdoorsdev` stores `webapp-releases/api-dev.zip` in addition to product images and queues.
+  - Known gap noted: `backend.yml` runs CI only; API deployment is a manual run-from-package blob step.
+  - Known gap noted: CORS `AllowedOrigins` still includes old `stoutdoorswebdev` origin post-SWA migration.
