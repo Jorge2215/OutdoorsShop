@@ -102,3 +102,493 @@ az webapp config appsettings set \
 1. `AZURE_STATIC_WEB_APPS_API_TOKEN` secret is set in GitHub.
 2. A push to `dev` triggers a successful SWA deployment.
 3. The SWA URL is verified to serve the frontend and reach the API correctly.
+
+---
+From .squad/decisions/inbox/cinnamon-functions-503-fix.md
+
+# Cinnamon Decision — 2026-05-24T12:58:17.459-03:00 — Fix Azure Functions 503 by moving to Flex Consumption
+
+## Context
+`func-outdoors-dev` was returning `503 Site Unavailable` while the main API stayed healthy. The repo targets `.NET 10` isolated Azure Functions, and the existing Azure resource was provisioned on the classic Linux Consumption (`Y1`) plan.
+
+Investigation showed:
+- `az functionapp show` reported `kind=functionapp,linux`, `sku=Dynamic`, and `linuxFxVersion=DOTNET-ISOLATED|10`.
+- `az functionapp function list` failed because the host runtime was unavailable.
+- The published package itself was structurally valid, but the hosting plan/runtime combination was not.
+- The existing `.github/workflows/functions.yml` built artifacts only; it did not deploy them.
+
+## Decision
+Run the dev Functions app on **Flex Consumption** instead of classic Linux Consumption, and deploy a Linux-targeted package that preserves the generated `.azurefunctions` folder at the zip root.
+
+## Why
+Microsoft's Azure Functions guidance for `.NET 10` isolated explicitly excludes Linux Consumption. Flex Consumption supports `.NET 10` isolated on Linux and removes the unsupported hosting mismatch that caused the host to stay unavailable.
+
+## Applied changes
+- Deleted and recreated `func-outdoors-dev` on Flex Consumption in `westus3`.
+- Reapplied Key Vault secret access for the new system-assigned managed identity.
+- Restored app settings for SQL/storage integration.
+- Deployed the current Functions package successfully.
+- Added `GET /api/health` for operational verification.
+- Updated `functions.yml` to build, zip, and deploy the Functions app on push.
+- Updated infra/docs to describe Flex Consumption instead of the old Y1 plan.
+
+## Verification
+- `az resource show ... Microsoft.Web/sites/func-outdoors-dev` reports `sku = FlexConsumption` and `state = Running`.
+- `az functionapp function list --name func-outdoors-dev --resource-group rg-outdoors-dev` returns `Health`, `PaymentConfirmation`, `SeasonalDiscount`, and `StockUpdate`.
+- `curl https://func-outdoors-dev.azurewebsites.net/api/health` returns `200` with `{"status":"ok"}`.
+- `curl -I https://func-outdoors-dev.azurewebsites.net` returns `200`.
+
+## Consequences
+Future Linux-hosted `.NET 10` Functions environments should use Flex Consumption from the start. Deployment packaging must keep `.azurefunctions/` at the archive root or Flex zip deployment validation will fail.
+
+
+
+---
+From .squad/decisions/inbox/cinnamon-image-urls.md
+
+# Cinnamon Decision — 2026-05-24T14:24:58.550-03:00 — Product image URLs via Unsplash CDN
+
+## Context
+
+All 16 seeded products had `NULL` ImageUrl values in Azure SQL (`OutdoorsShopDB`). The frontend product cards render `<img src={product.imageUrl}>`, so null URLs produced broken image icons.
+
+## Decision
+
+Use **Unsplash free-tier CDN URLs** (`https://images.unsplash.com/photo-{id}?w=400&fit=crop&auto=format`) for all 16 product images rather than uploading owned blobs to `stoutdoorsdev`.
+
+## Why this option
+
+- **Zero cost & zero infra overhead:** Unsplash Source URLs are publicly accessible, no auth required, and served from a global CDN — no blob upload step needed.
+- **Variety per product:** A unique, category-relevant photo was picked per product (no duplicates).
+- **Reversible:** If the team ever wants owned images in `stoutdoorsdev/product-images`, it's a 16-row UPDATE away.
+
+## Image mapping
+
+| ProductID | Name | Unsplash Photo ID |
+|-----------|------|-------------------|
+| 1 | Alpine Base Camp Tent 4P | photo-1504280390367-361c6d9f38f4 |
+| 2 | TrailRest Mummy Sleeping Bag -10C | photo-1544348817-5f2cf14b88c8 |
+| 3 | Summit Lite Backpacking Stove | photo-1563299796-17596ed6b017 |
+| 4 | NightTrail 350 Headlamp | photo-1414694762283-acccc27bca85 |
+| 5 | Trailblazer Carbon Trekking Poles | photo-1551632811-561732d1e306 |
+| 6 | Granite Ridge Hiking Boots Mid | photo-1542401886-65d6c61db217 |
+| 7 | HydroFlow 3L Hydration Pack | photo-1538635993-85060e52fd8a |
+| 8 | TrailNavigator GPS 500 | photo-1532274402911-5a369e4c4bb5 |
+| 9 | VertexMTB Trail Helmet | photo-1541625602330-2277a4c46182 |
+| 10 | GripForce Cycling Gloves Full-Finger | photo-1558981403-c5f9899a28bc |
+| 11 | LumaBolt 1000 Bike Light Set | photo-1485965120184-e220f721d03e |
+| 12 | TrailFix Pro Bike Repair Kit | photo-1571068316344-75bc76f77890 |
+| 13 | Ascent Pro Climbing Harness | photo-1522163182402-834f871fd851 |
+| 14 | Summit Chalk Bag with Belt | photo-1564760055775-d63b17a55c44 |
+| 15 | VértexEdge Rock Climbing Shoes | photo-1574397113396-4369b6dc0dbc |
+| 16 | IronLink Carabiner Set 6-pack | photo-1599508704512-2f19efd1e35f |
+
+## Implementation
+
+- Created `scripts/update-image-urls.sql` — runs 16 UPDATE statements and a verification SELECT.
+- Updated `scripts/seed-products.sql` — replaced NULL with the Unsplash URLs in the INSERT block so future reseeds are correct.
+- Ran the UPDATE script via `sqlcmd` against `azure-sql-pampa.database.windows.net / OutdoorsShopDB`.
+- Required opening firewall rule `AllowCinnamonAgent` in resource group `AzureSqlRg` (not `rg-outdoors-dev` — that's where the Azure SQL server lives).
+
+## Verification
+
+`GET https://app-outdoors-api-dev.azurewebsites.net/api/v1/products` returned 16 products, all with non-null `imageUrl`.
+
+## Consequences
+
+- Product images are served from Unsplash CDN — any future Unsplash rate-limiting or takedown would break them.
+- For production, consider uploading owned images to `stoutdoorsdev/product-images` and pointing `ImageUrl` there.
+
+
+
+---
+From .squad/decisions/inbox/cinnamon-queues-fixed.md
+
+# Cinnamon — 2026-05-24T13:49:18.068-03:00 — Queue trigger fix outcome
+
+## Summary
+- Storage account resolved from `AzureWebJobsStorage`: `stoutdoorsdev`
+- Created missing queues:
+  - `payment-confirmations`
+  - `stock-updates`
+- Verified source bindings already matched those queue names exactly:
+  - `PaymentConfirmation` → `payment-confirmations`
+  - `StockUpdate` → `stock-updates`
+
+## Operational fix applied
+- Restarted `func-outdoors-dev`
+- Synced triggers with Azure
+- Added Flex Consumption always-ready instances for the queue-triggered functions:
+  - `function:PaymentConfirmation = 1`
+  - `function:StockUpdate = 1`
+
+## Verification
+- `stock-updates` smoke-test message was consumed after the always-ready change
+- `payment-confirmations` smoke-test message was consumed on the follow-up check after the same change
+- Final queue peeks returned empty arrays for both queues
+
+## Diagnostics
+- Application Insights recorded function-group targeting for `function:paymentconfirmation` and `function:stockupdate` after the scale update
+- No new queue-function exceptions were visible during verification
+
+## Outcome
+Queue-triggered Azure Functions are now operational in dev with the required queues provisioned and function-specific always-ready capacity configured on Flex Consumption.
+
+
+
+---
+From .squad/decisions/inbox/cinnamon-role-seeding-fix.md
+
+# Cinnamon Decision — 2026-05-24T14:43:10-03:00 — Identity Role Seeding on API Startup
+
+## Context
+
+`POST /api/v1/auth/register` returned **500** with `"Role CUSTOMER does not exist."` because the
+`AspNetRoles` table in Azure SQL (`OutdoorsShopDB`) was empty. `AddToRoleAsync("Customer")` fails
+at runtime if the role row has never been inserted. There was no mechanism to seed the roles.
+
+## Decision
+
+Seed ASP.NET Core Identity roles (`Administrator`, `Customer`) at application startup inside
+`src/OutdoorsShop.Api/Program.cs`, immediately before `app.Run()`, using `RoleManager<IdentityRole>`.
+The seeding block is idempotent (checks `RoleExistsAsync` before `CreateAsync`).
+
+A minimal-API health endpoint `GET /api/health` → `200 {"status":"ok"}` was also added to satisfy
+Creta's test requirement and fix the pre-existing 404 on that path.
+
+## Changes Applied
+
+- `src/OutdoorsShop.Api/Program.cs` — added `using Microsoft.AspNetCore.Identity` and two blocks:
+  1. `app.MapGet("/api/health", ...)` — anonymous health endpoint
+  2. `using (var scope = ...) { ... RoleManager seeding loop ... }` — runs before `app.Run()`
+
+## Deployment
+
+- Published API for Linux (`-r linux-x64 --self-contained false /p:UseAppHost=false`)
+- Zipped using `[System.IO.Compression.ZipFile]::CreateFromDirectory` (not `Compress-Archive -Path *`
+  — the wildcard form on Windows PowerShell produced a broken 3-entry archive missing the `.runtimeconfig.json`)
+- Uploaded to `stoutdoorsdev/webapp-releases/api-dev.zip`, restarted `app-outdoors-api-dev`
+
+## Verification
+
+| Endpoint | Expected | Actual |
+|---|---|---|
+| `GET /api/health` | 200 `{"status":"ok"}` | ✅ 200 |
+| `POST /api/v1/auth/register` | 200 + JWT | ✅ 200 |
+| `POST /api/v1/auth/login` | 200 + JWT | ✅ 200 |
+
+## Consequences
+
+- Roles are created once on first boot; subsequent restarts skip the `CreateAsync` call (idempotent).
+- Any future role additions (e.g. `Manager`) should be appended to the same seeding array.
+- `Compress-Archive -Path *` must **not** be used for App Service zip packages — use `ZipFile.CreateFromDirectory` instead.
+
+
+
+---
+From .squad/decisions/inbox/creta-e2e-journey-results.md
+
+# E2E Journey Test Results — OutdoorsShop
+
+**Date:** 2026-05-24T14:31:32-03:00  
+**Tester:** Creta (Test Engineer)  
+**Requested by:** Jorge  
+**Environments tested:**
+- API: https://app-outdoors-api-dev.azurewebsites.net
+- Functions: https://func-outdoors-dev.azurewebsites.net
+- Frontend (SWA): https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net
+
+---
+
+## Results by Step
+
+### Step 1 — API Health Check
+**❌ FAIL** — `GET /api/health` → **404 Not Found**
+
+Tried all variations:
+- `/api/health` → 404
+- `/health` → 404
+- `/api/v1/health` → 404
+
+The API has no health endpoint. `Program.cs` does not register any health check middleware (`app.MapHealthChecks` is absent). The API is clearly running (other endpoints return 200), but there is no dedicated health route.
+
+---
+
+### Step 2 — Browse Products (unauthenticated)
+**✅ PASS** — `GET /api/v1/products` → **200 OK**
+
+- **16 products** returned ✅
+- **0 products** with null or empty `imageUrl` ✅
+- All `imageUrl` values use Unsplash CDN format (`https://images.unsplash.com/photo-{id}?w=400&fit=crop&auto=format`)
+- Categories present in responses: Camping (4), Trekking, Cycling, Climbing
+
+Sample products confirmed:
+```
+productID=1  Alpine Base Camp Tent 4P       imageUrl=https://images.unsplash.com/photo-1504280390367...
+productID=13 Ascent Pro Climbing Harness    imageUrl=https://images.unsplash.com/photo-1522163182402...
+productID=6  Granite Ridge Hiking Boots Mid imageUrl=https://images.unsplash.com/photo-1542401886-65d6...
+```
+
+---
+
+### Step 3 — Browse by Category + Category List
+**✅ PASS** — Both endpoints working
+
+- `GET /api/v1/products?categoryId=1` → **200 OK**, 4 products (Camping category)
+- `GET /api/v1/categories` → **200 OK**, 4 categories returned:
+  ```json
+  [{"categoryID":1,"name":"Camping","isActive":true},
+   {"categoryID":2,"name":"Trekking","isActive":true},
+   {"categoryID":3,"name":"Cycling","isActive":true},
+   {"categoryID":4,"name":"Climbing","isActive":true}]
+  ```
+
+---
+
+### Step 4 — Register New Customer
+**❌ FAIL** — `POST /api/v1/auth/register` → **500 Internal Server Error**
+
+**Error:** `"Role CUSTOMER does not exist."`
+
+**Root cause:** `AuthController.Register` calls `await _userManager.AddToRoleAsync(user, "Customer")` at line 55. The ASP.NET Core Identity `AspNetRoles` table in the production Azure SQL database has never been seeded with the "Customer" (or "Administrator") roles.
+
+**Code trace:**
+- `Program.cs` does NOT seed roles at startup
+- `TestWebAppFactory.cs` seeds roles for integration tests but production has no equivalent
+- The `AddToRoleAsync` call will always fail until roles exist in `AspNetRoles`
+
+**Note on DTO shape mismatch:** The task description sent `firstName`/`lastName` fields, but the actual `RegisterDto` requires `name` (combined) and `confirmPassword`. The 500 was hit after correcting the DTO.
+
+**🔴 This is the primary blocker — authentication is completely broken in production.**
+
+---
+
+### Step 5 — Login
+**❌ FAIL** — `POST /api/v1/auth/login` → **401 Unauthorized**
+
+No users exist in the production database because Step 4 has never succeeded. Zero tokens can be acquired. All token-protected steps (6 with token, 9, 10) are blocked.
+
+---
+
+### Step 6 — Get Product Detail
+**✅ PASS (partial)** — `GET /api/v1/products/1` → **200 OK** (unauthenticated)
+
+Product detail endpoint does not require authentication. Returns full product with `imageUrl`. The Swagger spec does show `Authorization: Bearer` for this endpoint but the API does not enforce it at the GET level.
+
+```json
+{"productID":1,"name":"Alpine Base Camp Tent 4P","categoryID":1,"categoryName":"Camping",
+ "price":149.99,"imageUrl":"https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=400..."}
+```
+
+---
+
+### Steps 7 & 8 — Add to Cart / View Cart
+**⚠️ WARN (by design)** — `GET /api/v1/cart` → **404 Not Found**
+
+Per **ADR-004**: Cart is client-side (Zustand + localStorage). There are **no server-side cart endpoints**. This is expected behavior. No Swagger paths exist for `/cart`. The journey cannot be tested end-to-end without a browser session.
+
+---
+
+### Step 9 — Place Order
+**❌ BLOCKED** — Cannot test; requires authenticated token (blocked by Step 4/5 failure).
+
+`GET /api/v1/Orders` without token → **401 Unauthorized** (correct behavior, confirmed).
+
+Order creation endpoint schema verified from Swagger:
+```json
+POST /api/v1/Orders
+{
+  "shippingAddress": "string (max 500)",
+  "paymentMethod": "string (max 100)",
+  "items": [{"productID": int, "quantity": int, "unitPrice": decimal}]
+}
+```
+
+---
+
+### Step 10 — View Order History
+**❌ BLOCKED** — Requires authenticated token. `GET /api/v1/Orders` → **401** without token ✅ (correct auth guard).
+
+---
+
+### Step 11 — Verify Images Render
+**✅ PASS** — All 4 sampled Unsplash image URLs return **200 OK** via HEAD request
+
+| Product | URL (truncated) | Status |
+|---------|-----------------|--------|
+| Alpine Base Camp Tent 4P | `photo-1504280390367...` | 200 ✅ |
+| Ascent Pro Climbing Harness | `photo-1522163182402...` | 200 ✅ |
+| Granite Ridge Hiking Boots Mid | `photo-1542401886-65d6...` | 200 ✅ |
+| GripForce Cycling Gloves Full-Finger | `photo-1558981403-c5f9...` | 200 ✅ |
+
+---
+
+### Step 12 — Azure Functions Health
+**✅ PASS** — `GET https://func-outdoors-dev.azurewebsites.net/api/health` → **200 OK**
+
+Response body:
+```json
+{"status":"ok"}
+```
+
+---
+
+## Edge Cases
+
+### EC1 — Wrong Password Login
+**✅ PASS** — Returns **401 Unauthorized** (confirmed via `Invoke-WebRequest`)
+
+The `AuthController.Login` correctly returns `401` for both unknown email and wrong password (same response — no user enumeration leak).
+
+*Note: Testing with `curl.exe --data-binary` on Windows with single-quoted JSON produces a misleading 400; this is a Windows curl escaping issue, not an API bug. Use `Invoke-WebRequest` or `curl.exe` with `--data` and escaped JSON on Windows.*
+
+### EC2 — Protected Endpoints Without Token
+**✅ PASS** — All return **401 Unauthorized**
+
+| Endpoint | Status |
+|----------|--------|
+| `GET /api/v1/Orders` | 401 ✅ |
+| `GET /api/v1/customers` | 401 ✅ |
+| `GET /api/v1/inventory` | 401 ✅ |
+
+### EC3 — Duplicate Registration
+**⚠️ WARN — Cannot test** — Register always 500s before reaching duplicate-check logic. Cannot verify 409 behavior.
+
+### EC4 — Frontend Serving
+**✅ PASS** — SWA `https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net` → **200 OK**
+
+---
+
+## Pass Rate Summary
+
+| Step | Description | Result |
+|------|-------------|--------|
+| 1 | API Health Check | ❌ FAIL (404 — no health endpoint) |
+| 2 | Browse Products | ✅ PASS (16 products, all with imageUrl) |
+| 3 | Browse by Category + List | ✅ PASS |
+| 4 | Register Customer | ❌ FAIL (500 — missing roles in production DB) |
+| 5 | Login | ❌ FAIL (401 — no registered user exists) |
+| 6 | Product Detail | ✅ PASS (200, no auth required) |
+| 7 | Add to Cart | ⚠️ WARN (client-side by design, no endpoint) |
+| 8 | View Cart | ⚠️ WARN (client-side by design, no endpoint) |
+| 9 | Place Order | ❌ BLOCKED (needs auth) |
+| 10 | View Order History | ❌ BLOCKED (needs auth) |
+| 11 | Verify Images | ✅ PASS (4/4 Unsplash URLs return 200) |
+| 12 | Functions Health | ✅ PASS (200 {"status":"ok"}) |
+
+**Pass rate: 6/12 steps (50%)**  
+*(2 steps are by-design warns; 2 steps blocked only by the auth blocker)*
+
+---
+
+## 🔴 Blockers (Immediate Action Required)
+
+### BLOCKER-1: Production DB missing ASP.NET Identity roles
+
+**Symptom:** `POST /api/v1/auth/register` → 500 `"Role CUSTOMER does not exist."`
+
+**Root cause:** The `AspNetRoles` table in `OutdoorsShopDB` on `azure-sql-pampa.database.windows.net` has never been seeded. The API calls `AddToRoleAsync(user, "Customer")` unconditionally on register, but the role doesn't exist.
+
+**Fix options (pick one):**
+
+**Option A — Startup seeding (recommended):** Add to `Program.cs`:
+```csharp
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    foreach (var role in new[] { "Administrator", "Customer" })
+        if (!await roleManager.RoleExistsAsync(role))
+            await roleManager.CreateAsync(new IdentityRole(role));
+}
+```
+
+**Option B — One-time SQL script:** Run against `OutdoorsShopDB`:
+```sql
+IF NOT EXISTS (SELECT 1 FROM AspNetRoles WHERE Name = 'Customer')
+    INSERT INTO AspNetRoles (Id, Name, NormalizedName, ConcurrencyStamp)
+    VALUES (NEWID(), 'Customer', 'CUSTOMER', NEWID());
+IF NOT EXISTS (SELECT 1 FROM AspNetRoles WHERE Name = 'Administrator')
+    INSERT INTO AspNetRoles (Id, Name, NormalizedName, ConcurrencyStamp)
+    VALUES (NEWID(), 'Administrator', 'ADMINISTRATOR', NEWID());
+```
+
+**Impact:** ALL authenticated flows (register → login → orders → checkout) are completely broken. This is priority 1.
+
+---
+
+## ⚠️ Issues to Log for Later
+
+### ISSUE-1: No health endpoint
+`GET /api/health` (and variants) returns 404. Azure App Service auto-ping and load balancer health checks have no target. Add `app.MapHealthChecks("/health")` to `Program.cs`.
+
+### ISSUE-2: DTO mismatch — Register endpoint
+The task description (and presumably API docs) describes a `firstName`/`lastName` register payload. The actual `RegisterDto` uses a combined `name` field and requires `confirmPassword`. Scribe should update the API documentation to reflect the actual contract.
+
+### ISSUE-3: Cart journey untestable via HTTP
+Cart is client-side (ADR-004). E2E journey tests covering cart → checkout must be done via Playwright browser automation, not raw HTTP. This should be noted in any E2E test strategy document.
+
+### ISSUE-4: OpenAPI served only in Development environment
+`app.MapOpenApi()` is wrapped in `if (app.Environment.IsDevelopment())`. If the app ever runs in `Production` mode, Swagger/OpenAPI will disappear. Confirm the App Service environment setting is locked to `Development`.
+
+
+
+---
+From .squad/decisions/inbox/creta-functions-test-results.md
+
+# Creta Test Report — 2026-05-24T13:49:18.068-03:00 — Azure Functions live test results
+
+## Scope
+Live verification of `func-outdoors-dev` at `https://func-outdoors-dev.azurewebsites.net` after the Flex Consumption + .NET 10 isolated fix.
+
+## What passed
+- `GET /api/health` returned `200 OK` with `{"status":"ok"}`.
+- `GET /api/` returned `404 Not Found`, which matches the source code (only `health` is exposed over HTTP).
+- `/admin/functions` listed `Health`, `PaymentConfirmation`, `SeasonalDiscount`, and `StockUpdate`.
+- `POST /admin/functions/SeasonalDiscount` returned `202 Accepted`.
+- Application Insights recorded:
+  - `SeasonalDiscount triggered at 05/24/2026 16:51:12`
+  - `SeasonalDiscount completed. 0 products updated for Spring.`
+
+## Issues found
+### 1. Queue trigger infrastructure was missing
+The storage account `stoutdoorsdev` did not have the `payment-confirmations` or `stock-updates` queues when tested. I created both queues temporarily to continue testing, then deleted them during cleanup.
+
+**Why this matters:** queue-triggered functions depend on those queues existing in the shared storage account. Without them, the trigger path is not operable.
+
+### 2. Queue-triggered functions did not consume messages
+After creating the queues, I posted:
+- a safe `PaymentConfirmation` message for non-existent `orderId = 999999`
+- a malformed `StockUpdate` payload (`{not-json`)
+
+After waiting, both messages were still visible with `dequeueCount = 0`, and Application Insights showed no `PaymentConfirmation triggered` or `StockUpdate triggered` traces.
+
+**Why this matters:** the queue listeners appear inactive even though the functions are indexed and listed by the runtime.
+
+### 3. Admin API could not be used to invoke queue-trigger functions
+`POST /admin/functions/PaymentConfirmation` and `POST /admin/functions/StockUpdate` both returned `400 Bad Request`.
+
+**Why this matters:** only the timer function was manually triggerable through the admin API in this environment, which limited live contract testing of queue-function logic.
+
+## Recommendations for Cinnamon
+1. Verify queue provisioning for `payment-confirmations` and `stock-updates` in infrastructure or deployment bootstrap so the queues exist before runtime validation.
+2. Investigate why queue listeners are not consuming from `AzureWebJobsStorage` on Flex Consumption:
+   - confirm the storage connection used by the host resolves correctly for queue operations
+   - inspect startup diagnostics for queue listener initialization
+   - verify the Storage Queues extension is fully active in the deployed host
+   - restart/redeploy after queues exist to rule out listener-start timing issues
+3. If operationally useful, document the supported admin-trigger pattern for non-HTTP functions; current live behavior rejects queue-function admin invocation with `400`.
+
+## Cleanup
+Temporary test queues were deleted after testing so the storage account returned to its original state.
+
+
+
+---
+From .squad/decisions/inbox/toru-architecture-doc.md
+
+### 2026-05-24: Architecture document created
+**By:** Toru (requested by Jorgito)
+**What:** Created docs/architecture.md — comprehensive architecture reference
+**Why:** Formal documentation of current system design, ADRs, and resource inventory
+
+

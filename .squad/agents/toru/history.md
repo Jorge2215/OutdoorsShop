@@ -32,3 +32,5 @@
   - Added Resource Group Map: `rg-outdoors-dev` (App Service, Functions, SWA, Storage, KV, Insights) vs `AzureSqlRg` (SQL Server + DB).
   - ⚠️ **Critical note:** SQL is in `AzureSqlRg`, not `rg-outdoors-dev` — firewall rules must target `AzureSqlRg`. `deploySql=false` in Bicep prevents accidental re-provisioning.
   - `SeasonalDiscountFunction` correctly shown as Timer trigger (02:00 UTC), not HTTP.
+
+- 2026-05-24 � Cinnamon: Fixed API role seeding and added /api/health endpoint; redeployed API (commits: dev:786cc88, main:a6a1780).

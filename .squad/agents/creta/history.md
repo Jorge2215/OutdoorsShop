@@ -15,6 +15,51 @@
 
 ## Learnings
 
+### 2026-05-24 — Full E2E Journey Test (live endpoints)
+
+**Auth flow shape (live API, verified):**
+- `POST /api/v1/auth/register` body: `{name, email, password, confirmPassword}` — NOT `{firstName, lastName}`. Combined `name` field, `confirmPassword` required.
+- `POST /api/v1/auth/login` returns `{accessToken, ...}` — use `login.accessToken`.
+- Refresh token is in `HttpOnly` cookie `refreshToken`, not in the JSON body.
+
+**Cart is fully client-side:**
+- ADR-004 confirmed: no server-side cart endpoints exist. `GET /api/v1/cart` → 404 by design.
+- Cart → checkout journey requires Playwright browser tests (Zustand + localStorage).
+
+**Order creation schema:**
+- `POST /api/v1/Orders`: `{shippingAddress: string, paymentMethod: string, items: [{productID, quantity, unitPrice}]}`
+- Endpoint path uses capital `O`: `/api/v1/Orders` (not `/api/v1/orders`)
+
+**Auth guards confirmed working:**
+- `GET /api/v1/Orders`, `GET /api/v1/customers`, `GET /api/v1/inventory` all return 401 without token.
+- Wrong password login returns 401 (not 400 — confirmed via Invoke-WebRequest).
+
+**Production blocker — missing roles:**
+- `POST /api/v1/auth/register` → 500 `"Role CUSTOMER does not exist."`
+- Production `AspNetRoles` table is empty; `Program.cs` has no startup role seeding.
+- Fix: add `RoleManager` seeding to `Program.cs` startup or run direct SQL against `OutdoorsShopDB`.
+
+**No health endpoint:**
+- `/api/health`, `/health`, `/api/v1/health` all return 404. No `app.MapHealthChecks` in `Program.cs`.
+
+**OpenAPI only in Development:**
+- `app.MapOpenApi()` is inside `if (app.Environment.IsDevelopment())`.
+- Live API is running with `ASPNETCORE_ENVIRONMENT=Development`, so OpenAPI is accessible at `/openapi/v1.json`.
+
+**Windows curl pitfall:**
+- `curl.exe --data-binary` with single-quoted JSON fails on Windows PowerShell (JSON parse error on `{`).
+- Always use `Invoke-RestMethod` / `Invoke-WebRequest` for JSON POST bodies on Windows.
+
+**Unsplash images all healthy:**
+- All 16 product imageUrls use `https://images.unsplash.com/photo-{id}?w=400&fit=crop&auto=format`.
+- 4/4 spot-checked URLs return HTTP 200 via HEAD request.
+
+**Azure Functions health confirmed:**
+- `GET https://func-outdoors-dev.azurewebsites.net/api/health` → 200 `{"status":"ok"}`
+
+**SWA frontend serving:**
+- `https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net` → 200 OK
+
 ### 2026-05-24 — Azure Functions live test results
 
 - Verified deployment of 4 functions: Health, SeasonalDiscount, PaymentConfirmation, StockUpdate
