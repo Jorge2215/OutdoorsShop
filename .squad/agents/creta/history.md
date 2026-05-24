@@ -17,6 +17,18 @@
 
 ### 2026-05-24 — Full E2E Journey Test (live endpoints)
 
+---
+
+#### SUMMARY (auto-generated)
+- Creta is the test suite agent for Outdoors Shop, covering xUnit, Vitest, Playwright, and integration tests.
+- Key focus: auth flows, cart, orders, CORS, Azure Functions, and cross-origin edge cases.
+- Recent highlights: E2E journey test (12/12 pass), Azure Functions live test, SQLite in-memory fix for integration tests, CORS verification, SameSite/JWT fixes, and coverage numbers.
+- All major backend and frontend flows are now passing, with production blockers resolved (role seeding, health endpoint, CORS origins).
+- Known issues: Azure Functions queue triggers require infra work, and seasonal discount function needs date injection for deterministic tests.
+- API hostname is confirmed as app-outdoors-api-dev.azurewebsites.net (not outdoors-shop-api-dev).
+
+---
+
 **Auth flow shape (live API, verified):**
 - `POST /api/v1/auth/register` body: `{name, email, password, confirmPassword}` — NOT `{firstName, lastName}`. Combined `name` field, `confirmPassword` required.
 - `POST /api/v1/auth/login` returns `{accessToken, ...}` — use `login.accessToken`.
@@ -179,6 +191,84 @@ protected override void Dispose(bool disposing)
 - API tests: 58 passed, 0 skipped, 0 failed (45 unit + 13 integration)
 - Function tests: 16 passed, 4 skipped (seasonal date-injection gap — unrelated to EF Core)
 - Total: 74 passed, 4 skipped, 0 failed
+### 2026-05-24 — Auth Fix Verification (role seeding deployed)
+
+**E2E score: 12/12 ✅ (was 6/12)**
+
+- Cinnamon's `Program.cs` role seeding fix confirmed working in production.
+- `POST /api/v1/auth/register` now returns 200 with a full JWT on first registration (no 500).
+- JWT contains `Customer` role claim under full URI key `http://schemas.microsoft.com/ws/2008/06/identity/claims/role`.
+- Register response includes `accessToken` immediately — no second login required after signup.
+- `GET /api/health` → 200 `{"status":"ok"}` — health endpoint is now live (was 404 previously).
+- **Orders list response is paginated** — `GET /api/v1/Orders` returns `{items, pageNumber, pageSize, totalCount, totalPages}`, NOT a plain array. Frontend and test code must access `.items[]` for the order list.
+- All 6 previously-blocked steps (4, 5, 9, 10, 11, 12) now pass. No regressions on passing steps (1–3, 6–8).
+- Updated SKILL.md known issues: health endpoint and role seeding are both resolved.
+
+---
+
+### 2026-05-24 — SameSite + JWT given_name Fix Verification (commit 22e971e)
+
+**All 6 verification tests: ✅ PASS**
+
+**SameSite fix confirmed:**
+- `POST /api/v1/auth/register` and `POST /api/v1/auth/login` both return: `Set-Cookie: refreshToken=...; secure; samesite=none; httponly`
+- `SameSite=Strict` is gone. `SameSite=None; Secure` is live.
+- `/auth/refresh` (Test 3): 200 OK — rotated cookie also carries `samesite=none; secure`.
+- Cross-origin refresh (Test 6): `POST /refresh` with `Origin: https://brave-beach-044d7c610.6.azurestaticapps.net` → 200 OK.
+
+**JWT given_name fix confirmed:**
+- `"given_name": "Creta Test"` in JWT payload — name, not email.
+- `/auth/me` returns `{"name": "Creta Test", ...}`.
+
+**Key observation (action needed):**
+- When the SWA origin `brave-beach-044d7c610.6.azurestaticapps.net` was sent, the API response had **no CORS headers**. This means the new SWA URL is not in `AllowedOrigins`. The SameSite fix is correct, but browsers will still block the response until CORS origins are updated. Old config pointed to `stoutdoorswebdev.z1.web.core.windows.net`.
+
+**Token rotation behavior:**
+- After `POST /login`, the register-issued refresh token is invalidated. First refresh attempt with old cookie returned 401. After using the login cookie, refresh returned 200. Expected behavior — not a bug.
+
+**API hostname clarification:**
+- The provided mission URL `outdoors-shop-api-dev.azurewebsites.net` does NOT resolve (DNS failure).
+- Working URL remains `app-outdoors-api-dev.azurewebsites.net` — same as previous sessions.
+
+---
+
+### 2026-05-24 — CORS Verification after Cinnamon-5 fix (commit cada3b2)
+
+## 2026-05-24 — CORS Verification (creta-5)
+- Ran 8-test cross-origin verification suite against live API after Cinnamon-5 CORS fix
+- All 8 tests passed: preflight on auth+products, register/login/refresh flows, negative tests
+- Confirmed: SWA origin (brave-beach-044d7c610.6.azurestaticapps.net) allowed
+- Confirmed: stale blob origin, unknown origins, rogue SWA origin all blocked
+- Confirmed: cookie samesite=none;secure;httponly on all auth flows
+- Confirmed: JWT given_name = registered name (not email)
+- Verdict: PASSED — Cinnamon's fix is solid
+
+**All 8 tests: ✅ PASS**
+
+**CORS preflight confirmed (all auth + product endpoints):**
+- OPTIONS /api/v1/auth/register, /auth/login, /api/v1/products with `Origin: https://brave-beach-044d7c610.6.azurestaticapps.net` → 204 with correct `Access-Control-Allow-Origin` + `Access-Control-Allow-Credentials: true`
+
+**Functional cross-origin flows confirmed:**
+- Register (POST), Login (POST), and Refresh (POST) all return correct ACAO header under the SWA origin.
+- All three `Set-Cookie: refreshToken` responses carry `secure; samesite=none; httponly` ✅
+
+**JWT `given_name` claim confirmed correct:**
+- `given_name` = the registered display name ("Creta Verify"), not the email address. Fix from commit 22e971e is still intact.
+
+**Token rotation working:**
+- Login → rotates register cookie; Refresh → rotates login cookie. Each refresh token value is distinct.
+
+**Negative tests confirmed (origin blocklist working):**
+- `stoutdoorswebdev.z1.web.core.windows.net` (stale blob) → no ACAO header (correctly rejected)
+- `evil.example.com` (unknown) → no ACAO header (correctly rejected)
+- `wonderful-plant-0a1ca5f0f.7.azurestaticapps.net` (rogue Azure platform entry, now cleared) → no ACAO header (correctly rejected)
+
+**API hostname clarification (still valid):**
+- `outdoors-shop-api-dev.azurewebsites.net` still does NOT resolve.
+- Working URL: `app-outdoors-api-dev.azurewebsites.net` (unchanged from previous sessions).
+
+---
+
 ## 2026-05-23 — Integration tests fixed (Creta)
 Key learnings:
 - ConfigureServices callbacks in WebApplicationFactory run BEFORE Program.cs services; RemoveAll<DbContextOptions<>>() is a no-op in that callback for later registrations.

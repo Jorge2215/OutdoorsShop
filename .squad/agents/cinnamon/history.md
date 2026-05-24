@@ -25,6 +25,14 @@
 - - Switched the API from development-only OpenAPI mapping to Swashbuckle middleware so `/swagger` and `/swagger/v1/swagger.json` stay available in every environment.
 - - Build validation: `dotnet build` succeeded from `src/OutdoorsShop.Api` after adding `Swashbuckle.AspNetCore` and wiring `UseSwagger()` / `UseSwaggerUI()`.
 - - Deployment validation: published linux-x64, zipped with `System.IO.Compression.ZipFile`, uploaded `webapp-releases/api-dev.zip`, refreshed `WEBSITE_RUN_FROM_PACKAGE`, restarted `app-outdoors-api-dev`, and verified both Swagger endpoints returned `200` in production.
+
+## 2026-05-24 — Swagger in Production (cinnamon-6)
+- Removed IsDevelopment() guard from Swagger/SwaggerUI in Program.cs
+- Enabled Swagger in ALL environments (dev, staging, production)
+- Deployed commits 9076954 + 943db2e to dev
+- Verified: /swagger and /swagger/v1/swagger.json → 200 on app-outdoors-api-dev.azurewebsites.net
+- IMPORTANT: Correct API hostname is app-outdoors-api-dev.azurewebsites.net (NOT outdoors-shop-api-dev)
+- Backlog item #1 completed
 - 
 - ### 2026-05-24T15:30:00-03:00 — CORS fix: SWA URL + platform CORS trap
 
