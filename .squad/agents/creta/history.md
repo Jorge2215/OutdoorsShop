@@ -15,6 +15,16 @@
 
 ## Learnings
 
+### 2026-05-24 — Azure Functions live test results
+
+- Verified deployment of 4 functions: Health, SeasonalDiscount, PaymentConfirmation, StockUpdate
+- Health and SeasonalDiscount tested successfully (HTTP/admin API)
+- PaymentConfirmation and StockUpdate queue triggers not operable (queues missing, listeners inactive)
+- Admin API could not trigger queue functions (400)
+- Recommendations: provision queues in infra, investigate listener config, document admin-trigger limitations
+
+(See orchestration/session logs for details)
+
 ### 2026-05-23 — Comprehensive xUnit Test Suite (Controllers + Azure Functions)
 
 **Moq patterns discovered:**
