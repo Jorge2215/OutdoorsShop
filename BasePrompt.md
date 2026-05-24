@@ -20,6 +20,11 @@ Team Squad roles and purposed names:
 - Scribe (Documentation): records design decisions and technical notes.
 - Ralph: ensures synchronization and consistency across all agents.
 
+## Context
+Project Repository on GitHub is: https://github.com/Jorge2215/OutdoorsShop.git
+- Use "dev" branch for development
+- Use "main" branch for deployment
+
 ## Output
 
 Expected features:
@@ -33,3 +38,10 @@ Expected features:
 ## Purpose
 
 The purpose of this project is to compare the effort and efficiency of developing with GitHub Copilot + Squad versus traditional development methods, while delivering a functional proof of concept.
+
+##Prompt Create Tables on Azure SQL DB
+Cinnamon, create the EF Core initial migration. Use the following ConnectioString: Server=tcp:azure-sql-pampa.database.windows.net,1433;Initial Catalog=OutdoorsShopDB;Persist Security Info=False;User ID=ShopAdmin;Password=Jorgito2026!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+
+
+## Resume
+copilot --resume=561f7ff3-e5a1-4fa8-9a38-91908166a3d2

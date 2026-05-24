@@ -1,0 +1,63 @@
+# Status badge: ![Backend CI](https://github.com/Jorge2215/OutdoorsShop/actions/workflows/backend.yml/badge.svg)
+
+name: Backend CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'src/**'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'src/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore NuGet packages
+        run: dotnet restore OutdoorsShop.slnx
+
+      - name: Build solution
+        run: dotnet build OutdoorsShop.slnx --no-restore
+
+      - name: Run tests
+        run: dotnet test OutdoorsShop.slnx --no-build --verbosity normal --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/*.trx
+
+      - name: Report test summary
+        if: always()
+        run: |
+          TRX=$(find TestResults -name "*.trx" | head -1)
+          if [ -n "$TRX" ]; then
+            PASSED=$(grep -oP 'passed="\K[0-9]+' "$TRX" | head -1 || echo "?")
+            FAILED=$(grep -oP 'failed="\K[0-9]+' "$TRX" | head -1 || echo "0")
+            SKIPPED=$(grep -oP 'skipped="\K[0-9]+' "$TRX" | head -1 || echo "0")
+            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | Failed | Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+            echo "| $PASSED | $FAILED | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
+          fi

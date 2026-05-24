@@ -6,12 +6,23 @@ How to decide who handles what.
 
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
-| {domain 1} | {Name} | {example tasks} |
-| {domain 2} | {Name} | {example tasks} |
-| {domain 3} | {Name} | {example tasks} |
-| Code review | {Name} | Review PRs, check quality, suggest improvements |
-| Testing | {Name} | Write tests, find edge cases, verify fixes |
-| Scope & priorities | {Name} | What to build next, trade-offs, decisions |
+| System architecture, ADR, Azure topology, deployment strategy | Toru | Infra design, solution structure, cross-cutting API contracts |
+| .NET 10, C#, ASP.NET Core, Web API, Entity Framework Core, Azure SQL, database schema, migrations | Cinnamon | CRUD endpoints, EF migrations, repository pattern, service layer |
+| Azure Functions (seasonal discounts, payment confirmation, stock updates) | Cinnamon (primary) + Toru (architecture) | Function triggers, bindings, business logic |
+| Azure Blob Storage (product images, order receipts, CSV/Excel exports) | Cinnamon | Blob upload/download, SAS tokens, report generation |
+| JWT auth, ASP.NET Core Identity, RBAC, backend roles | Cinnamon | Auth middleware, role policies, token generation |
+| React, TypeScript, UI components, product catalog, categories (Camping/Trekking/Cycling/Climbing) | Malta | Component design, state management, API integration |
+| Shopping cart, order flow UI, payment simulation UI | Malta | Cart state, order review, checkout flow |
+| Login/register UI, role-based views (Admin vs Customer) | Malta | Auth forms, session management, protected routes |
+| Unit tests (.NET xUnit), integration tests (WebApplicationFactory), API contract tests | Creta | Backend test coverage |
+| Frontend component tests (Vitest, React Testing Library), E2E tests (Playwright) | Creta | Frontend test coverage |
+| Test plan, test strategy, edge cases, QA review | Creta | Before feature is marked done |
+| Documentation, ADR, session log, changelog, decisions | Scribe | Silent — automatic |
+| GitHub issues, backlog, PR status, CI/CD, work queue | Ralph | Monitoring loop |
+| "Team" or multi-domain requests | Toru + Cinnamon + Malta + Creta | Parallel fan-out |
+| Code review | Toru | Architecture and API contracts |
+| Testing | Creta | All test layers |
+| Scope & priorities | Toru | Architectural decisions, trade-offs |
 | Session logging | Scribe | Automatic — never needs routing |
 
 ## Issue Routing
