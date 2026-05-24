@@ -15,6 +15,37 @@
 
 ## Learnings
 
+### 2026-05-24T00:12:30.732-03:00 — Dual CORS conflict broke the dev SPA
+
+**Task:** Diagnose why the Blob-hosted frontend at `https://stoutdoorswebdev.z1.web.core.windows.net` showed only the loading screen and then failed in production.
+
+**What was found:**
+- Azure App Service platform CORS still had three allowed origins configured while the API also ran ASP.NET Core `UseCors("ReactDevPolicy")` from `src/OutdoorsShop.Api/Program.cs`
+- The API code already had the correct dynamic `AllowedOrigins__*` settings, so the platform CORS layer was redundant and risked conflicting browser CORS behavior
+- After clearing App Service platform CORS, the API continued returning a single valid `Access-Control-Allow-Origin: https://stoutdoorswebdev.z1.web.core.windows.net` header and `Access-Control-Allow-Credentials: true` from application middleware alone
+
+**Operational learning:**
+- Do not enable Azure App Service platform CORS when ASP.NET Core CORS middleware is already active for the same app; keep one source of truth only
+- For OutdoorsShop, CORS policy must stay in application code/configuration (`AllowedOrigins__*` + `UseCors`) so environments can be managed consistently without Azure injecting a second CORS layer
+
+---
+
+### 2026-05-23T22:49:04.177-03:00 — Swagger deployment to dev App Service completed
+
+**Task:** Deploy the latest `main` commit (`197ea1e` — `feat: enable swagger in all environments`) to the dev API App Service.
+
+**What was verified:**
+- Deployment source branch/worktree: `.copilot-main` on `main`, clean, ahead of `origin/main` by 1 commit
+- Recent commits confirmed with `git log --oneline -3`
+- Live endpoints after deployment: `https://app-outdoors-api-dev.azurewebsites.net/openapi/v1.json` → `200`, `https://app-outdoors-api-dev.azurewebsites.net/swagger` → `200`
+
+**Operational learning:**
+- The dev API App Service is effectively blob-backed via `WEBSITE_RUN_FROM_PACKAGE` pointing at `https://stoutdoorsdev.blob.core.windows.net/webapp-releases/api-dev.zip?...`
+- `az webapp deploy` created a successful OneDeploy record, but the live site only updated after replacing the backing blob package and restarting the app
+- For this Linux App Service, a Linux-targeted publish (`dotnet publish -c Release -r linux-x64 --self-contained false /p:UseAppHost=false`) was required; the generic publish briefly left the site unhealthy (`503`)
+
+---
+
 ### 2026-05-23 — Azure Bicep Infrastructure Templates Created
 
 **Task:** Create complete Azure Bicep IaC in `infra/` for the OutdoorsShop dev environment.
@@ -190,3 +221,35 @@ OutdoorsShop PoC v1.0.0 released to main on 2026-05-23. Tag: v1.0.0.
 - Functions host URL still returned `503 Site Unavailable` at the end of this run even though the app resource, package URL, and settings were deployed.
 
 **Decision filed:** `.squad/decisions/inbox/toru-azure-deploy-strategy.md`
+
+---
+
+### 2026-05-23T23:49:31.687-03:00 — Frontend SPA deployed to Azure dev
+
+**Decision:** Host the Vite SPA on Azure Blob Storage static website in a new westus3 storage account (`stoutdoorswebdev`) instead of Azure Static Web Apps or App Service.
+
+**Why this path won:**
+- Static Web Apps free tier was evaluated first, but `Microsoft.Web/staticSites` is not available in `westus3`.
+- Blob static website kept the deployment CLI-only, low-cost, and aligned with the user's `westus3` preference.
+- App Service remained unnecessary for a static Vite bundle.
+
+**What was deployed:**
+- Frontend build source: `frontend/`
+- Build-time API origin: `https://app-outdoors-api-dev.azurewebsites.net`
+- New storage account: `stoutdoorswebdev` (`westus3`, `StorageV2`, `Standard_LRS`, minimum TLS `TLS1_2`)
+- Static website enabled with `index.html` as both index and 404 document
+- Vite `dist/` uploaded to `$web`
+
+**Live URL:**
+- `https://stoutdoorswebdev.z1.web.core.windows.net`
+
+**Cross-origin work:**
+- Added `https://stoutdoorswebdev.z1.web.core.windows.net` to `app-outdoors-api-dev` App Service CORS and application `AllowedOrigins__*` settings
+- Restarted the API so the updated origin list was applied
+- Verified preflight `OPTIONS https://app-outdoors-api-dev.azurewebsites.net/api/v1/products` returned `200 OK` with `Access-Control-Allow-Origin: https://stoutdoorswebdev.z1.web.core.windows.net`
+
+**Operational learning:**
+- Blob static website is the fastest no-pipeline path for a Vite SPA when SWA region availability blocks the preferred option.
+- Azure Blob static website deep-link fallback returns the SPA shell via the 404 document but keeps HTTP status `404`; acceptable for dev, but SWA remains the cleaner long-term SPA host if westus-region support is acceptable.
+
+**Decision filed:** `.squad/decisions/inbox/toru-frontend-deploy.md`
