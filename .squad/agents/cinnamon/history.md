@@ -20,6 +20,23 @@
 - 
 - ## Learnings
 - 
+- ### 2026-05-24T16:52:12.609-03:00 — Admin user seed
+- 
+- - Added idempotent admin user seed to `Program.cs` after role seeding — uses `FindByEmailAsync` guard to prevent duplicates.
+- - Admin user: `admin@outdoorsshop.dev` / `Admin@123456`, role `Administrator`, Customer.Name `"Admin User"`.
+- - `given_name` claim in JWT comes from `Customer.Name`; must create Customer record alongside the Identity user or the claim will fall back to UserName (which is email).
+- - **Oryx double `.runtimeconfig.json` trap:** If a previous `publish_output` folder exists inside the project directory, dotnet publish will include it in the new output zip, causing Oryx to find 2 `.runtimeconfig.json` files and fall back to `hostingstart.dll`. Fix: set `WEBSITE_STARTUP_FILE = dotnet OutdoorsShop.Api.dll` via `az webapp config set --startup-file`.
+- - Commit: `708af75`; deployed to `app-outdoors-api-dev`; login smoke test confirmed 200 + JWT with `given_name: "Admin User"` and role `Administrator`.
+- 
+- ### 2026-05-24T16:52:12.609-03:00 — Azure Blob Storage product image upload
+- 
+- - Most blob infrastructure was already in place (interface, service, NuGet, config placeholder, DI wiring); only the upload method, endpoint, and Azure container setup were missing.
+- - Added `UploadProductImageAsync(Stream, string, string, int)` to `IBlobStorageService` — no `IFormFile` in Core to keep ASP.NET out of the domain layer; controller handles `IFormFile` extraction.
+- - `BlobStorageService.UploadProductImageAsync` creates `product-images` container with `PublicAccessType.Blob`; blob name: `products/{productId}/{guid}{ext}`.
+- - `[Consumes("multipart/form-data")]` causes 415 before auth runs — always include correct content type when testing auth.
+- - Real connection string injected via `AzureStorage__ConnectionString` App Service env var; placeholder remains in appsettings.json.
+- - Commit: `526b8fa`; deployed to `app-outdoors-api-dev`; 401/403/health smoke tests confirmed.
+- 
 - ### 2026-05-24T16:24:29.079-03:00 — Swagger enabled in all environments
 - 
 - - Switched the API from development-only OpenAPI mapping to Swashbuckle middleware so `/swagger` and `/swagger/v1/swagger.json` stay available in every environment.

@@ -79,27 +79,25 @@ $products | Select-Object -First 4 | ForEach-Object {
 | `GET /api/v1/Orders` | Bearer | Paginated; customer sees own orders only |
 | `POST /api/v1/Orders` | Bearer | Body: `{shippingAddress, paymentMethod, items[{productID, quantity, unitPrice}]}` |
 | `GET /api/v1/cart` | — | **404 — No server-side cart (ADR-004: client-side only)** |
-| `GET /api/v1/health` | — | **404 — No health endpoint registered** |
+| `GET /api/health` | — | **200 `{"status":"ok"}` — health endpoint live (as of 2026-05-24 Cinnamon deploy)** |
 
 ## Auth token field name
-`login.accessToken` (not `token` or `jwt`). Refresh token is in an `HttpOnly` cookie `refreshToken`.
+`login.accessToken` (not `token` or `jwt`). Refresh token is in an `HttpOnly` cookie `refreshToken`.  
+**Note:** `POST /api/v1/auth/register` also returns `accessToken` directly — no second login needed after signup.
 
-## Known production issues (as of 2026-05-24)
-
-### 🔴 Missing roles in production DB
-`POST /api/v1/auth/register` → 500 `"Role CUSTOMER does not exist."`
-
-The `AspNetRoles` table in `OutdoorsShopDB` was never seeded. Until this is fixed, no user can register and the entire authenticated journey is blocked.
-
-**Fix:** Add startup role seeding to `Program.cs` or run the one-time SQL:
-```sql
-IF NOT EXISTS (SELECT 1 FROM AspNetRoles WHERE Name = 'Customer')
-    INSERT INTO AspNetRoles (Id, Name, NormalizedName, ConcurrencyStamp)
-    VALUES (NEWID(), 'Customer', 'CUSTOMER', NEWID());
-IF NOT EXISTS (SELECT 1 FROM AspNetRoles WHERE Name = 'Administrator')
-    INSERT INTO AspNetRoles (Id, Name, NormalizedName, ConcurrencyStamp)
-    VALUES (NEWID(), 'Administrator', 'ADMINISTRATOR', NEWID());
+## Orders list response shape
+`GET /api/v1/Orders` returns a **paginated object**, not a plain array:
+```json
+{ "items": [...], "pageNumber": 1, "pageSize": 20, "totalCount": 1, "totalPages": 1 }
 ```
+Access orders via `.items[]`.
+
+## Known production issues (as of 2026-05-24 — RESOLVED)
+
+### ✅ ~~Missing roles in production DB~~ — FIXED (2026-05-24)
+~~`POST /api/v1/auth/register` → 500 `"Role CUSTOMER does not exist."`~~
+
+Cinnamon added startup role seeding to `Program.cs`. Both `Administrator` and `Customer` roles are now seeded on app startup. **Full auth flow is operational.**
 
 ## Steps covered by Playwright (not HTTP)
 Cart flow (add item → view cart → checkout) is **client-side only** (Zustand + localStorage per ADR-004). These steps require Playwright browser automation, not raw HTTP tests.

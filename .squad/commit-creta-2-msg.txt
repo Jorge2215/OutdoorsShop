@@ -1,0 +1,8 @@
+﻿Scribe: Merge decision inbox and record creta-2 orchestration
+
+- Merged: .squad/decisions/inbox/creta-auth-fix-verification.md -> .squad/decisions.md
+- Added: .squad/orchestration-log/2026-05-24T174806Z-creta-2.md
+- Added: .squad/log/2026-05-24T174806Z-creta-2.md
+- Updated: .squad/agents/malta/history.md
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

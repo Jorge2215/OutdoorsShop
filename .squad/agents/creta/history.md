@@ -15,6 +15,49 @@
 
 ## Learnings
 
+### 2026-05-24 — Image Upload Test Execution (Run 2)
+
+**Endpoint:** `POST /api/v1/products/{id}/image` — confirmed DEPLOYED as of 2026-05-24T16:52:12.609-03:00.
+
+**Tests run: 3 / 17 pending**
+- A-01: ✅ PASS — 401 without token (auth guard fires before any upload logic)
+- A-02: ✅ PASS — 403 with Customer JWT (role guard working; token expiry pitfall: tokens expire in ~90 min, stale token returns 401 not 403)
+- C-01: ✅ PASS — CORS preflight 204 from SWA origin, all headers correct
+
+**Blocked: 14 / 17** — No admin user exists in the database.
+- `Program.cs` seeds roles (`Administrator`, `Customer`) but does NOT seed an admin user account.
+- 7 credential combinations attempted — all 401. No known admin password documented anywhere.
+- H-01..05, A-03, V-01..05, E-01..04 all require Administrator JWT to get past auth gate before reaching validation/business logic.
+
+**Token expiry pitfall discovered:**
+- Access tokens expire in ~90 minutes (previously stated as 15 min — actual observed TTL is closer to 90 min based on `exp` claim difference).
+- When a Customer token expires, the endpoint returns 401 (invalid token) instead of 403 (forbidden role). Always register a fresh token before re-running auth tests.
+
+**Verdict: ⚠️ CONDITIONAL PASS**
+- Auth guards and CORS are correctly implemented.
+- 14 tests remain BLOCKED pending an admin JWT. See `creta-image-upload-verdict.md` in decisions inbox.
+- Unblock path: DB-level role escalation (`INSERT INTO AspNetUserRoles`) or startup seeding of a default admin account.
+
+### 2026-05-24 — Image Upload Test Plan (image-upload-test-plan.md)
+
+**Endpoint status:** `POST /api/v1/products/{id}/image` → **404 NOT DEPLOYED** as of 2026-05-24T16:52:12.609-03:00.
+
+**Tests run (infrastructure):**
+- PRE-01: Health → ✅ PASS
+- PRE-02: Product 1 exists → ✅ PASS (16 products, Alpine Base Camp Tent 4P at ID=1)
+- PRE-03: Existing imageUrl publicly accessible → ✅ PASS (Unsplash CDN, 200, image/jpeg)
+- C-01: CORS OPTIONS from SWA origin → ✅ PASS (204, correct CORS headers including `POST` in Allow-Methods)
+
+**Tests pending (17 functional tests):** H-01..05, A-01..03, V-01..05, E-01..04 — all blocked on Cinnamon deploying the upload action in `ProductsController`.
+
+**Key findings written to decisions inbox:**
+1. No default admin user seeded — DB-level role assignment needed for admin JWT in tests
+2. `BlobStorageService.UploadAsync` uses `PublicAccessType.None` — blobs won't be publicly accessible without SAS; container must use `PublicAccessType.Blob` for product images
+3. CORS middleware responds to OPTIONS for 404 paths — CORS is verifiable before endpoint exists
+4. Old blob cleanup is critical to test on re-upload (E-03)
+
+**Skill added:** `.squad/skills/blob-image-upload-testing/SKILL.md` — minimal test image generation, PowerShell multipart upload helpers, CORS preflight helper, blob naming strategies.
+
 ### 2026-05-24 — Full E2E Journey Test (live endpoints)
 
 ---
