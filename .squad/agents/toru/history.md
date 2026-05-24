@@ -146,3 +146,22 @@
 
 - Created full Azure Bicep IaC under infra/ (main orchestrator + 6 modules + dev parameters + README).
 - Decision filed: .squad/decisions/inbox/toru-bicep-infra.md (merged into .squad/decisions.md).
+
+---
+
+### 2026-05-23 — OutdoorsShop PoC v1.0.0 Released to Production
+
+OutdoorsShop PoC v1.0.0 released to main on 2026-05-23. Tag: v1.0.0.
+
+**Merge commit:** `feat: OutdoorsShop PoC v1.0 — full stack release` (7f66530)
+**Branch:** dev → main (no-fast-forward merge, 21 commits)
+**Tag pushed:** v1.0.0 → origin
+
+**Release scope confirmed:**
+- 7 REST controllers (Auth, Products, Categories, Customers, Orders, Inventory, Reports)
+- 3 Azure Functions (SeasonalDiscount timer, PaymentConfirmation queue, StockUpdate queue)
+- React + TypeScript frontend (oriental theme)
+- Azure Bicep IaC (6 modules) + GitHub Actions CI/CD (3 workflows)
+- 78 tests passing, 0 skipped, 0 failed
+
+**Decision filed:** `.squad/decisions/inbox/toru-v1-release.md`
