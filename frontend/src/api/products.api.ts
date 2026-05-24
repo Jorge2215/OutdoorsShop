@@ -1,6 +1,6 @@
 import type { Category } from '../types/category'
 import type { Product, ProductUpsertRequest } from '../types/product'
-import { fetchWithAuth, request } from './client'
+import { fetchWithAuth, fetchWithAuthMultipart, request } from './client'
 
 interface RawProduct {
   productID: number
@@ -84,6 +84,18 @@ export const productsApi = {
   },
   async remove(id: number) {
     await fetchWithAuth<void>(`/products/${id}`, { method: 'DELETE' })
+  },
+  async uploadImage(productId: number, file: File): Promise<string> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetchWithAuthMultipart<{ imageUrl: string } | string>(
+      `/products/${productId}/image`,
+      formData,
+    )
+    if (typeof response === 'string') {
+      return response
+    }
+    return (response as { imageUrl: string }).imageUrl
   },
 }
 
