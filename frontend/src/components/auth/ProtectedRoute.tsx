@@ -9,10 +9,8 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, role } = useAuthStore((state) => ({
-    isAuthenticated: state.isAuthenticated,
-    role: state.role,
-  }))
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const role = useAuthStore((state) => state.role)
   const location = useLocation()
 
   if (!isAuthenticated) {
