@@ -18,7 +18,6 @@ const guestLinks: NavLinkItem[] = [
 ]
 
 const customerLinks: NavLinkItem[] = [
-  { label: 'Products', to: '/products' },
   { label: 'Orders', to: '/orders' },
   { label: 'Profile', to: '/profile' },
 ]
