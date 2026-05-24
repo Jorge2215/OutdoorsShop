@@ -592,3 +592,242 @@ From .squad/decisions/inbox/toru-architecture-doc.md
 **Why:** Formal documentation of current system design, ADRs, and resource inventory
 
 
+---
+From .squad/decisions/inbox/creta-registration-diagnosis.md
+
+# Registration Failure Diagnosis — 2026-05-24T15:03:44-03:00
+
+**Author:** Creta (Test Engineer)  
+**Requested by:** Jorgito  
+**API under test:** `https://app-outdoors-api-dev.azurewebsites.net`  
+**SWA under test:** `https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`
+
+---
+
+## TL;DR
+
+The suspected `firstName`/`lastName` DTO mismatch does **not** cause registration failure — the frontend already maps the split name into a single `name` field before calling the API. The API correctly accepts `{name, email, password, confirmPassword}` and returns 200.
+
+**However, two real bugs were found:**
+1. 🔴 **`SameSite=Strict` on the refresh cookie** — token refresh from the SWA will silently fail (cross-site context), forcing users back to the login page after 15 minutes.
+2. 🟡 **JWT `given_name` claim contains the email, not the display name** — minor data quality bug.
+
+---
+
+## Step 1 — API Behaviour with Wrong Field Names (Confirmed)
+
+| Payload sent | HTTP Status | Error returned |
+|---|---|---|
+| `{firstName, lastName, email, password, confirmPassword}` | **400** | `{"Name": ["The Name field is required."]}` |
+| `{name, email, password}` (no confirmPassword) | **400** | `{"ConfirmPassword": ["The ConfirmPassword field is required.", "Passwords do not match."]}` |
+| `{firstName, lastName, email, password, confirmPassword}` (no `name`) | **400** | `{"Name": ["The Name field is required."]}` |
+
+The API is strict: any missing or renamed field returns 400 with a clear validation error.
+
+---
+
+## Step 2 — What the Frontend Actually Sends
+
+**Form fields (`RegisterPage.tsx`):**
+```
+firstName, lastName, email, password, confirmPassword
+```
+
+**Payload sent to API (`auth.api.ts`, lines 53–58):**
+```json
+{
+  "name": "John Doe",       ← firstName + " " + lastName, correctly combined
+  "email": "...",
+  "password": "...",
+  "confirmPassword": "..."
+}
+```
+
+The `auth.api.ts` `register()` function explicitly constructs the `name` field:
+```ts
+body: JSON.stringify({
+  name: `${payload.firstName} ${payload.lastName}`.trim(),
+  email: payload.email,
+  password: payload.password,
+  confirmPassword: payload.confirmPassword,
+}),
+```
+
+**The frontend code is correct.** The split name is collapsed into a single `name` field before the HTTP call.
+
+---
+
+## Step 3 — Backend RegisterDto
+
+`src/OutdoorsShop.Core/DTOs/Auth/RegisterDto.cs`:
+```csharp
+[Required][MaxLength(200)] string Name
+[Required][EmailAddress]   string Email
+[Required][MinLength(8)]   string Password
+[Required][Compare(nameof(Password))] string ConfirmPassword
+```
+
+**Exact API expectation:** `{ name, email, password, confirmPassword }` — matches what the frontend sends.
+
+---
+
+## Step 4 — Mismatch Map (Actual)
+
+| Layer | Fields |
+|---|---|
+| **Form state** (`RegisterRequest` type) | `firstName`, `lastName`, `email`, `password`, `confirmPassword` |
+| **API call body** (what `auth.api.ts` sends) | `name`, `email`, `password`, `confirmPassword` ✅ |
+| **Backend `RegisterDto`** | `Name`, `Email`, `Password`, `ConfirmPassword` ✅ |
+
+> ✅ **No mismatch at the HTTP level.** The split only lives in the TypeScript type; it is correctly merged before the fetch call.
+
+---
+
+## Step 5 — Additional Bugs Found
+
+### Bug 1 🔴 — `SameSite=Strict` Breaks Token Refresh from the SWA
+
+**File:** `src/OutdoorsShop.Api/Controllers/AuthController.cs`, line ~232  
+**Code:**
+```csharp
+SameSite = SameSiteMode.Strict,  // ← THIS IS THE PROBLEM
+```
+
+**Effect:**  
+When a user registers or logs in from the SWA (`wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`), the API sets the `refreshToken` cookie on the `azurewebsites.net` domain with `SameSite=Strict`. Because the SWA is a different origin, all subsequent requests from the SWA to the API are **cross-site**. `SameSite=Strict` prevents the browser from sending this cookie in cross-site requests.
+
+**Consequence:**  
+- `POST /api/v1/auth/refresh` called from the SWA never receives the `refreshToken` cookie → returns `401`.
+- `fetchWithAuth` calls `clearAuth()` and redirects to `/login`.
+- Users are silently logged out within 15 minutes of registering or logging in.
+- This can make registration *appear* to succeed (200 OK is returned) but then immediately look broken as the user's session collapses on the first protected page load.
+
+**Fix (backend, one line):**
+```csharp
+SameSite = SameSiteMode.None,   // cross-origin SPA requires None + Secure
+Secure = true,                   // already set — required when SameSite=None
+```
+
+This applies to both the `SetRefreshTokenCookie` call and the cookie expiration in `Logout()`.
+
+---
+
+### Bug 2 🟡 — JWT `given_name` Contains Email, Not the Display Name
+
+**File:** `AuthController.cs`, line 185  
+**Code:**
+```csharp
+new(JwtRegisteredClaimNames.GivenName, user.UserName ?? string.Empty)
+```
+
+**Problem:** `user.UserName` is set to `dto.Email` during registration (lines 47–48), so the `given_name` JWT claim contains the email address rather than the user's display name.
+
+**Observed JWT claim:**  
+```json
+"given_name": "fullflowtest20260524@test.com"   ← should be "John Doe"
+```
+
+**Impact:** Low — the frontend reads the user's name from `/auth/me` (which correctly returns the name from the `Customer` record), not from JWT claims. However, any third-party tool or frontend code that decodes the JWT directly will see a wrong `given_name`.
+
+**Fix (backend):**  
+Either look up the Customer record (which is already loaded in `GenerateTokenAsync`) and use `customer.Name`, or remove the `GivenName` claim entirely since `/auth/me` is the authoritative source:
+```csharp
+// Option A: use the customer name (already in scope in GenerateTokenAsync)
+new(JwtRegisteredClaimNames.GivenName, customer?.Name ?? string.Empty),
+
+// Option B: remove it entirely
+// (delete line 185)
+```
+
+---
+
+## CORS Status (Not the Issue)
+
+Tested the full CORS preflight and POST from the SWA origin:
+
+| Test | Result |
+|---|---|
+| `OPTIONS /api/v1/auth/register` with SWA origin | **200 OK** — `ACAO: https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`, `ACAC: true` |
+| `POST /api/v1/auth/register` with SWA origin | **200 OK** — full JWT returned |
+
+CORS is correctly configured for the SWA. This is not contributing to the failure.
+
+---
+
+## Recommended Fixes — Priority Order
+
+| Priority | Bug | File | Fix |
+|---|---|---|---|
+| 🔴 High | `SameSite=Strict` breaks refresh from SWA | `AuthController.cs` | Change to `SameSite=None` (keep `Secure=true`) |
+| 🟡 Medium | JWT `given_name` = email not name | `AuthController.cs` | Use `customer?.Name` or remove claim |
+
+The `SameSite` fix is the most likely cause of users experiencing "broken" sessions after registration — they register successfully, land on the products page, and are then silently kicked out when the access token expires and refresh fails.
+
+---
+
+## Verified Working (After All Tests)
+
+- `POST /api/v1/auth/register` with `{name, email, password, confirmPassword}` → **200 OK**, full JWT
+- `GET /api/v1/auth/me` with Bearer token → **200 OK**, correct `{name, email, roles}` profile
+- Full register → getMe chain → **both succeed end-to-end**
+- API correctly rejects wrong field names with descriptive 400 errors
+
+
+---
+From .squad/decisions/inbox/malta-register-fix.md
+
+# Malta — Registration Form Investigation
+**Date:** 2026-05-24T15:03:44.249-03:00
+**Author:** Malta (Frontend Dev)
+
+## Summary
+
+Investigated the reported registration failure. The frontend code was **already correct** — no field-name mismatch existed. The root cause was a backend role-seeding issue (fixed by Cinnamon), not a frontend payload problem.
+
+## What Was Investigated
+
+### Field Name Mapping — No Mismatch Found
+The form (`RegisterPage.tsx`) uses `firstName`/`lastName`/`email`/`password`/`confirmPassword` internally. In `auth.api.ts`, the `register()` function correctly translates these to the API contract before sending:
+
+```json
+{
+  "name": "<firstName> <lastName>",
+  "email": "...",
+  "password": "...",
+  "confirmPassword": "..."
+}
+```
+
+This exactly matches the backend `RegisterDto` (`Name`, `Email`, `Password`, `ConfirmPassword`). No fix was needed here.
+
+### Auto-Login After Registration — Already Implemented
+`RegisterPage.tsx` already handles the JWT returned by a successful register:
+1. Calls `authApi.register(form)` → receives `{ accessToken, refreshToken, expiresAt }`
+2. Calls `authApi.getMe(auth.accessToken)` → fetches user profile
+3. Calls `setTokenAndUser(token, user)` → hydrates the auth store
+4. Navigates to `/products`
+
+No changes were needed.
+
+### Orders Pagination — Already Correct
+`orders.api.ts` already maps the paginated `{ items, pageNumber, pageSize, totalCount, totalPages }` response correctly via `mapPagedOrders()` and `RawPagedResult<T>`.
+
+### Build Verification
+`npm run build` passes with zero TypeScript errors.
+
+## API Contract (confirmed)
+
+| Endpoint | Method | Request Body | Success Response |
+|---|---|---|---|
+| `/api/v1/auth/register` | POST | `{ name, email, password, confirmPassword }` | `{ accessToken, refreshToken, expiresAt }` |
+| `/api/v1/auth/me` | GET (Bearer) | — | `{ userId, email, name, customerID, roles[] }` |
+
+## Actual Root Cause (backend, not frontend)
+
+Registration was returning 500 because the `AspNetRoles` table was missing the `Customer` and `Administrator` seed rows. Cinnamon fixed this in `Program.cs`. Creta verified: registration now returns 200 with a JWT immediately.
+
+## No Code Changes Required
+
+The frontend registration form has been correct since the initial implementation commit (`c4a9c9b`). This document is the deliverable.
+
+
