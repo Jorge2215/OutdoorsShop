@@ -223,3 +223,78 @@ OutdoorsShop PoC v1.0.0 has been released to `main`. This marks the completion o
 
 This PoC was built entirely using GitHub Copilot + Squad (Cinnamon/Backend, Malta/Frontend, Creta/Testing, Toru/Architecture, Scribe/Docs, Ralph/Monitoring). The release demonstrates the full end-to-end capability of the AI-assisted development workflow.
 
+---
+
+## Merged from inbox: creta-auth-fix-verification.md
+
+# Auth Fix Verification — 2026-05-24T14:57:00-03:00
+
+**Tested by:** Creta (Test Engineer)  
+**Date:** 2026-05-24T14:57:00-03:00  
+**Fix verified:** Cinnamon's role seeding in `Program.cs` (Administrator + Customer)  
+**Test email used:** `testuser_20260524145712@test.com`
+
+---
+
+## Quick Auth Smoke Test
+
+| Step | Endpoint | Status | Result |
+|------|----------|--------|--------|
+| Register | POST /api/v1/auth/register | 200 | ✓ PASS — User created, accessToken returned |
+| Login | POST /api/v1/auth/login | 200 | ✓ PASS — accessToken + refreshToken returned |
+| Role claim | JWT payload `role` claim | — | ✓ PASS — `Customer` role present |
+| Logout | POST /api/v1/auth/logout | 200 | ✓ PASS |
+
+### JWT Claims (register response)
+```json
+{
+  "sub": "b7777b5f-fb0c-4446-9e70-2adaa51922ae",
+  "email": "testuser_20260524145712@test.com",
+  "customer_id": "2",
+  "http://schemas.microsoft.com/ws/2008/06/identity/claims/role": "Customer",
+  "exp": 1779646334,
+  "iss": "https://app-outdoors-api-dev.azurewebsites.net",
+  "aud": "OutdoorsShopClient"
+}
+```
+Role seeding confirmed working: `Customer` role is present in the JWT after first registration.
+
+---
+
+## Full 12-Step E2E Journey (Updated)
+
+| Step | Description | HTTP Status | Pass/Fail |
+|------|-------------|-------------|-----------|
+| 1 | GET /api/health | 200 `{"status":"ok"}` | ✓ PASS |
+| 2 | GET /api/v1/products (list all) | 200 — 16 products, 0 null imageUrls | ✓ PASS |
+| 3 | GET /api/v1/categories | 200 — 4 categories | ✓ PASS |
+| 4 | POST /api/v1/auth/register | 200 — accessToken returned | ✓ PASS (was ✖ 500) |
+| 5 | POST /api/v1/auth/login | 200 — accessToken + expiresAt | ✓ PASS (was ✖ blocked) |
+| 6 | GET /api/v1/products/{id} | 200 — product detail with imageUrl | ✓ PASS |
+| 7 | GET /api/v1/products?category=Camping | 200 | ✓ PASS |
+| 8 | GET /api/v1/products?search=tent | 200 | ✓ PASS |
+| 9 | GET /api/v1/Orders (with JWT) | 200 — paginated response, 1 order after creation | ✓ PASS (was ✖ blocked) |
+| 10 | POST /api/v1/Orders (create order) | 201 — orderID=1, total=149.99 | ✓ PASS (was ✖ blocked) |
+| 11 | GET /api/v1/Orders/1 (specific order) | 200 — orderID=1, status=0, total=149.99 | ✓ PASS (was ✖ blocked) |
+| 12 | POST /api/v1/auth/logout | 200 | ✓ PASS (was ✖ blocked) |
+
+---
+
+## Summary
+
+- **Previous score:** 6/12
+- **New score:** 12/12 ✓
+- **Fixed:** Steps 4, 5, 9, 10, 11, 12 (all were blocked by missing `AspNetRoles`)
+- **Still failing:** None
+
+### Additional Observations
+
+1. **Register returns a full JWT immediately** — not just a success message. This is good UX (no forced second login after signup).
+2. **Orders response is paginated** — `GET /api/v1/Orders` returns `{items, pageNumber, pageSize, totalCount, totalPages}`, not a plain array. The SKILL.md and any frontend code consuming orders must handle the `.items` wrapper.
+3. **Role claim format** — The role is encoded under the full URI key `http://schemas.microsoft.com/ws/2008/06/identity/claims/role`, which is the ASP.NET Identity standard. Frontend token parsing should handle both short `role` and full URI key.
+4. **Health endpoint now live** — `GET /api/health → 200 {"status":"ok"}`. Previously 404. SKILL.md known issues section needs updating.
+
+### No regressions found
+All steps that previously passed (1, 2, 3, 6, 7, 8) continue to pass.
+
+
