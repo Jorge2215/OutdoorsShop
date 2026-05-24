@@ -9,12 +9,15 @@ From .squad/decisions/inbox/cinnamon-db-seed.md
 # Cinnamon Decision — 2026-05-24T00:58:00-03:00 — DB seed: Inventory column names
 
 ## Context
+
 Seeded OutdoorsShopDB with 16 outdoor products and inventory rows via `scripts/seed-products.sql`.
 
 ## Decision
+
 Treat `Inventory.QuantityAvailable` and `Inventory.ReorderThreshold` as the canonical column names.
 
 ## Background
+
 The task spec referenced `QuantityOnHand` and `ReorderLevel`, but the actual Azure SQL schema (applied by EF Core migrations) uses:
 - `QuantityAvailable` (not `QuantityOnHand`)
 - `ReorderThreshold` (not `ReorderLevel`)
@@ -22,11 +25,80 @@ The task spec referenced `QuantityOnHand` and `ReorderLevel`, but the actual Azu
 The discrepancy was discovered by querying `INFORMATION_SCHEMA.COLUMNS` before executing the seed.
 
 ## Impact
+
 Any future SQL scripts, seed files, or raw-SQL queries against the `Inventory` table must use these column names.
 EF Core entity properties that map to these columns should be verified against the migration history if ever changed.
 
 ## Seed outcome
+
 - 16 products inserted (4 per category: Camping/Trekking/Cycling/Climbing)
 - 16 inventory rows inserted
 - Live API `GET /api/v1/products` confirmed: 16 products returned
 - Script is idempotent (guard clause prevents re-seeding)
+
+---
+
+From .squad/decisions/inbox/toru-frontend-swa-migration.md
+
+# Toru Decision — Frontend Migration: Azure Storage → Azure Static Web App
+
+**Date:** 2026-05-24T11:39:21-03:00
+**By:** Toru (Architect)
+**Status:** Accepted
+
+## Decision
+
+Migrate the React SPA frontend from Azure Blob Storage static website (`stoutdoorswebdev`) to **Azure Static Web App** (`app-outdoorsweb-swa`).
+
+## Resource Details
+
+| Field | Value |
+|---|---|
+| SWA name | `app-outdoorsweb-swa` |
+| Resource group | `rg-outdoors-dev` |
+| Region | `westus3` |
+| SKU | Free |
+| Default hostname | `wonderful-plant-0a1ca5f0f.7.azurestaticapps.net` |
+| Old static hosting account | `stoutdoorswebdev` (can be deleted after SWA is verified live) |
+| Blob storage account | `stoutdoorsdev` (**DO NOT delete** — used for product-images, order-receipts, reports) |
+
+## Why
+
+- Azure Static Web Apps is the proper production-grade SPA host: correct 200 responses on deep links, built-in PR preview environments, global CDN, and no blob storage overhead.
+- Previous history entry noted SWA was unavailable in `westus3` — that constraint no longer applies; `app-outdoorsweb-swa` was provisioned successfully in `westus3`.
+- Blob static website served `index.html` on deep links but with HTTP 404 status — a known SPA routing limitation of Azure Storage static websites.
+
+## Changes Made
+
+- `infra/modules/staticwebapp.bicep` — new Bicep module for `Microsoft.Web/staticSites@2023-01-01`, Free SKU, outputs `staticWebAppName`, `defaultHostname`, and `deploymentToken` (secure).
+- `infra/main.bicep` — added `staticwebapp` module call after `functions`, added `staticWebAppUrl` output.
+- `.github/workflows/frontend.yml` — replaced build-only CI workflow with full CI/CD that builds with `VITE_API_URL` hardcoded to `https://app-outdoors-api-dev.azurewebsites.net` and deploys via `Azure/static-web-apps-deploy@v1`. Added `close_pull_request` job for PR environment cleanup.
+
+## GitHub Secrets Required
+
+Two secrets must be set in the GitHub repository before the workflow can deploy:
+
+| Secret name | Value source |
+|---|---|
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | `az staticwebapp secrets list --name app-outdoorsweb-swa --resource-group rg-outdoors-dev --query "properties.apiKey" -o tsv` |
+| `VITE_API_URL` | `https://app-outdoors-api-dev.azurewebsites.net` (optional — hardcoded as default in workflow) |
+
+**Note:** The `gh secret set` command failed during provisioning due to the PAT lacking the `secrets` write scope. These secrets must be set manually via the GitHub UI (Settings → Secrets and variables → Actions) or with a token that has `secrets:write` scope.
+
+## CORS Update Required
+
+After the SWA is live, update the API CORS `AllowedOrigins` app settings on `app-outdoors-api-dev` to include the new SWA hostname:
+
+```bash
+az webapp config appsettings set \
+  --name app-outdoors-api-dev \
+  --resource-group rg-outdoors-dev \
+  --settings "AllowedOrigins__3=https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net"
+```
+
+## Decommission Plan
+
+`stoutdoorswebdev` (old static hosting storage account) can be deleted **after**:
+1. `AZURE_STATIC_WEB_APPS_API_TOKEN` secret is set in GitHub.
+2. A push to `dev` triggers a successful SWA deployment.
+3. The SWA URL is verified to serve the frontend and reach the API correctly.
