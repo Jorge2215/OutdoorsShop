@@ -15,6 +15,10 @@
 
 ## Learnings
 
+### 2026-05-24T16:52:12.609-03:00 — Team update
+- Cinnamon delivered admin user seed (admin@outdoorsshop.dev / Admin@123456) — Creta can now rerun all blocked image upload tests.
+
+
 ### 2026-05-24 — Image Upload Test Execution (Run 2)
 
 **Endpoint:** `POST /api/v1/products/{id}/image` — confirmed DEPLOYED as of 2026-05-24T16:52:12.609-03:00.

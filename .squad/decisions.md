@@ -1,5 +1,304 @@
 ﻿# Decisions
 
+## 2026-05-24T16:52:12.609-03:00 — Merged from inbox: cinnamon-admin-seed.md
+
+# Admin User Seed — 2026-05-24T16:52:12.609-03:00
+
+**By:** Cinnamon (Backend Dev)
+**Commit:** `708af75`
+**Deployed to:** `app-outdoors-api-dev` (rg-outdoors-dev)
+
+## Decision
+
+Added an idempotent admin user seed to `Program.cs` that runs at startup after role seeding.
+
+## Credentials (dev environment only)
+
+| Field    | Value                      |
+|----------|----------------------------|
+| Email    | admin@outdoorsshop.dev     |
+| Password | Admin@123456               |
+| Role     | Administrator              |
+| Name     | Admin User                 |
+
+## What was added
+
+- `UserManager<ApplicationUser>` creates the admin user if not already present
+- Admin user assigned to `Administrator` role
+- Corresponding `Customer` record created with `Name = "Admin User"` so the JWT `given_name` claim resolves correctly
+- Full idempotency: `FindByEmailAsync` check prevents duplicates on every restart
+
+## Smoke test results
+
+- `POST /api/v1/auth/login` with above credentials → **200 OK**
+- JWT claims verified:
+  - `given_name: "Admin User"` ✓
+  - `role: Administrator` ✓
+  - `customer_id: 13` ✓
+
+## Notes
+
+- Password is stored hashed in ASP.NET Core Identity; plain text is in `Program.cs` as a dev-only seed (acceptable for dev environment per task brief)
+- Seed is safe to run on every app startup; does nothing if admin already exists
+
+---
+
+## 2026-05-24T16:52:12.609-03:00 — Merged from inbox: cinnamon-blob-storage-upload.md
+
+# Cinnamon Decision — 2026-05-24T16:52:12.609-03:00 — Product image upload via Azure Blob Storage
+
+**By:** Cinnamon (Backend Dev)
+**Status:** Implemented & deployed
+
+## Decision
+
+Implemented `POST /api/v1/products/{id}/image` endpoint (Administrator only) that uploads product images to Azure Blob Storage (`stoutdoorsdev`, container `product-images`) and persists the public URL to `Product.ImageUrl` in the database.
+
+## What was already in place
+
+- `Product.ImageUrl` — already a nullable `string?` on the entity; no EF migration needed
+- `Azure.Storage.Blobs` NuGet — already referenced in `OutdoorsShop.Infrastructure`
+- `IBlobStorageService` / `BlobStorageService` — already existed with `UploadAsync`, `DeleteAsync`, `GetSasUrlAsync`
+- `AzureStorage:ConnectionString` config placeholder — already in `appsettings.json`
+- `AddBlobStorage` DI extension — already wired in `ServiceCollectionExtensions` and called in `Program.cs`
+
+## What was added
+
+1. **`IBlobStorageService.UploadProductImageAsync(Stream, string, string, int) → string`** — new method on the interface (no ASP.NET dependency, keeps Core clean)
+2. **`BlobStorageService.UploadProductImageAsync`** — creates `product-images` container with `PublicAccessType.Blob`; blob name: `products/{productId}/{guid}{ext}`
+3. **`ProductsController.UploadImage`** — `POST /api/v1/products/{id}/image`, `[Authorize(Roles="Administrator")]`, `[Consumes("multipart/form-data")]`; validates MIME type (jpg/jpeg/png/gif/webp) and size (≤ 5 MB); updates `Product.ImageUrl` and saves to DB; returns `{ imageUrl }`.
+4. **Test fixes** — added `IBlobStorageService` mock to `ProductsControllerTests` ctor; added `UploadProductImageAsync` mock to `TestWebAppFactory`
+
+## Azure setup
+
+- Container `product-images` created in `stoutdoorsdev` with `--public-access blob`
+- Real connection string injected as `AzureStorage__ConnectionString` App Service setting (not committed to source)
+
+## Auth behavior (verified live)
+
+| Request | Result |
+|---|---|
+| No token | 401 |
+| Customer JWT | 403 |
+| Administrator JWT | 200 + `{ imageUrl }` |
+
+## Commit
+
+`526b8fa` — `feat(api): add product image upload via Azure Blob Storage`
+
+---
+
+## 2026-05-24T16:52:12.609-03:00 — Merged from inbox: creta-image-upload-tests.md
+
+# Creta Finding — Image Upload Tests (2026-05-24T16:52:12.609-03:00)
+
+**By:** Creta (Test Engineer)
+**Date:** 2026-05-24T16:52:12.609-03:00
+**Status:** Findings — for team awareness
+
+---
+
+## Finding 1: No default Administrator user is seeded
+
+`Program.cs` seeds the `Administrator` and `Customer` roles on startup, but does NOT create any default administrator user account. Any test or flow that requires `[Authorize(Roles = "Administrator")]` needs a pre-created admin user.
+
+**Recommendation for Cinnamon/Toru:** Add a dev-only admin seed user (email: `admin@dev.local`, password from Key Vault) to `Program.cs` startup under `if (app.Environment.IsDevelopment())`. This unblocks integration tests and manual QA without exposing credentials in production.
+
+---
+
+## Finding 2: CORS middleware handles preflight for unregistered routes ✅
+
+`OPTIONS /api/v1/products/1/image` from SWA origin returns **204** with all correct CORS headers even though the route doesn't exist yet. This is expected ASP.NET Core behavior — CORS middleware runs before routing and responds to preflight regardless of whether the downstream endpoint exists.
+
+**No action needed.** This confirms the SWA origin is correctly configured in `AllowedOrigins`.
+
+---
+
+## Finding 3: Image upload endpoint NOT yet deployed
+
+As of 2026-05-24T16:52:12.609-03:00, `POST /api/v1/products/{id}/image` returns 404. `ProductsController` has no upload action. `IBlobStorageService` is registered and ready.
+
+**Blocked tests:** 17 functional tests (H-01..05, A-01..03, V-01..05, E-01..04) all pending Cinnamon's implementation.
+
+---
+
+## Finding 4: Old blob cleanup is a critical test
+
+When re-uploading an image for the same product, there is a risk of blob proliferation if the old blob is not deleted. This must be explicitly tested (E-03). The `IBlobStorageService.DeleteAsync` method exists — Cinnamon's implementation must call it with the old `product.ImageUrl` blob name before writing the new one.
+
+**Recommended:** Parse the old `imageUrl` to extract the blob name before overwriting.
+
+---
+
+## Finding 5: Returned blob URL must be publicly anonymous
+
+If `BlobStorageService.UploadAsync` creates the container with `PublicAccessType.None` (current implementation), the returned URL will not be publicly accessible without a SAS token. For product images shown to anonymous shoppers, the container access level should be `PublicAccessType.Blob` (individual blobs readable, container listing blocked).
+
+**Action for Cinnamon:** Either change the `CreateIfNotExistsAsync` call to `PublicAccessType.Blob` for the `product-images` container, or always return a SAS URL and store the SAS-less base URL in the DB.
+
+**This is a potential defect if not addressed.** H-04 (verify public URL accessibility) will catch this at test time.
+
+---
+
+## 2026-05-24T16:52:12.609-03:00 — Merged from inbox: creta-image-upload-verdict.md
+
+# Image Upload Test Verdict — POST /api/v1/products/{id}/image
+
+**Tested by:** Creta (Test Engineer)
+**Date:** 2026-05-24T16:52:12.609-03:00
+**Endpoint:** `POST /api/v1/products/{id}/image`
+**API Base:** `https://app-outdoors-api-dev.azurewebsites.net`
+
+---
+
+## Verdict Summary
+
+| | Value |
+|---|---|
+| Tests in plan | 22 (17 pending + 4 PRE + 1 C-01 from Run 1) |
+| Tests run this session | 3 |
+| **PASS** | **3** |
+| **FAIL** | **0** |
+| **BLOCKED** | **14** |
+| Overall | ⚠️ **CONDITIONAL PASS** |
+
+---
+
+## Passing Tests
+
+| Test | Description | Actual Result |
+|------|-------------|---------------|
+| A-01 | No token → 401 | ✅ HTTP 401 Unauthorized |
+| A-02 | Customer JWT → 403 | ✅ HTTP 403 Forbidden |
+| C-01 | CORS OPTIONS from SWA origin | ✅ HTTP 204, all CORS headers correct |
+
+**Good news:**
+- Endpoint is deployed and in Swagger spec.
+- Auth guards (`[Authorize(Roles = "Administrator")]`) are correctly enforced.
+- CORS preflight from `https://brave-beach-044d7c610.6.azurestaticapps.net` works correctly.
+- The endpoint architecture is sound — 401 and 403 fire before any business logic.
+
+---
+
+## Blocked Tests (14)
+
+**Root cause: No administrator user exists in the database.**
+
+`Program.cs` seeds the `Administrator` and `Customer` roles at startup, but **no admin user account is created**. Without an Administrator JWT, all requests return 401/403 before reaching file validation, product lookup, or blob upload logic.
+
+7 credential combinations attempted at `POST /api/v1/auth/login` — all returned 401.
+
+| Blocked Test | Description |
+|---|---|
+| H-01 | Upload valid JPG as Administrator |
+| H-02 | Upload valid PNG as Administrator |
+| H-03 | Upload valid WEBP as Administrator |
+| H-04 | Returned URL is publicly accessible |
+| H-05 | GET /products/1 reflects new imageUrl |
+| A-03 | Administrator token → 200 |
+| V-01 | `.exe` file → 400 |
+| V-02 | `.pdf` file → 400 |
+| V-03 | 6MB file → 400 |
+| V-04 | Empty file (0 bytes) → 400 |
+| V-05 | No file field → 400 |
+| E-01 | Non-existent product 99999 → 404 |
+| E-02 | Re-upload same product |
+| E-03 | Old blob cleanup after re-upload |
+| E-04 | Filename with special characters |
+
+---
+
+## Action Required to Unblock
+
+**Option A (fastest) — DB role escalation:**
+
+```sql
+-- Get the Administrator role ID:
+SELECT Id FROM AspNetRoles WHERE Name = 'Administrator';
+
+-- Register a test user via API, then get their UserId:
+SELECT Id FROM AspNetUsers WHERE Email = 'admin-creta@test.com';
+
+-- Assign Administrator role:
+INSERT INTO AspNetUserRoles (UserId, RoleId) VALUES ('<userId>', '<adminRoleId>');
+```
+
+Then provide `admin-creta@test.com` / `<password>` to Creta.
+
+**Option B — Program.cs startup seeding:**
+
+Add a default admin account seed to `Program.cs` (email + known password), gated by environment (`IsDevelopment()`). This removes the DB-access dependency for test runs.
+
+**Option C — `/api/v1/admin/seed-test-user` endpoint (dev-only):**
+
+Add a dev-only endpoint that creates a test admin user on demand. Gate with `[ApiExplorerSettings(IgnoreApi = !isDevelopment)]`.
+
+---
+
+## Risk Assessment
+
+| Risk | Severity | Notes |
+|------|----------|-------|
+| File validation not tested | High | V-01..V-05: exe, pdf, >5MB, empty, no-file not verified |
+| Blob naming / public URL not verified | High | H-04: returned URL accessibility unknown |
+| Old blob cleanup not verified | Medium | E-03: could cause blob storage bloat on re-uploads |
+| Product 99999 → 404 not verified | Low | E-01: likely works based on standard controller pattern |
+
+---
+
+## Observation: Token TTL
+
+Access tokens appeared to expire in approximately 90 minutes (not 15 min as previously documented). The `exp` claim on the token issued was ~90 min after creation. This may have been changed by Cinnamon. Worth verifying the `JwtSettings:AccessTokenExpirationMinutes` app setting.
+
+---
+
+## Next Steps for Creta
+
+1. Receive admin credentials from Jorgito or Cinnamon (via DB escalation or Program.cs seed)
+2. Re-run H-01..H-05, A-03, V-01..V-05, E-01..E-04
+3. Update `image-upload-test-plan.md` with full results
+4. Issue final verdict (PASS / FAIL)
+
+---
+
+## 2026-05-24T16:52:12.609-03:00 — Merged from inbox: malta-blob-image-upload-ui.md
+
+# Decision: Admin Product Image Upload UI
+
+- **Date:** 2026-05-24T16:52:12.609-03:00
+- **Author:** Malta (Frontend Dev)
+- **Status:** Implemented
+
+## What
+
+Added admin-only product image upload UI to the `AdminProductsPage` edit modal. Builds on Cinnamon's `POST /api/products/{id}/image` endpoint (multipart form data, Administrator role).
+
+## Changes
+
+| File | Change |
+|------|--------|
+| `frontend/src/api/client.ts` | Added `fetchWithAuthMultipart` — skips Content-Type so browser sets multipart boundary; retries on 401 with token refresh |
+| `frontend/src/api/products.api.ts` | Added `uploadImage(productId, file)` using `fetchWithAuthMultipart`; handles both `string` and `{ imageUrl: string }` response shapes |
+| `frontend/src/components/products/ProductImageUpload.tsx` | New component: file picker, MIME + 5 MB validation, object-URL preview, upload with loading state, success/error feedback, onUploaded callback |
+| `frontend/src/pages/admin/AdminProductsPage.tsx` | Imports `ProductImageUpload`; renders it inside the edit modal only (create flow has no product ID yet) |
+
+## Why
+
+- Image upload requires an existing product ID → upload section appears only in edit mode, not create.
+- `fetchWithAuth` hardcodes `Content-Type: application/json` via `mergeHeaders`; multipart needs a separate helper so the browser can set the boundary automatically.
+- Customer-facing `ProductCard` and `ProductDetailPage` already call `getProductImage(imageUrl)` with placeholder fallback — no customer-side changes required.
+
+## Constraints respected
+
+- Upload UI is gated to admin edit modal only.
+- JWT Bearer token injected via `fetchWithAuthMultipart`.
+- Max 5 MB / accepted types (JPG, PNG, GIF, WEBP) validated on the client before upload.
+- `npm run build` passes clean (0 TypeScript errors).
+
+---
+
+
+
 ## Merged from inbox: cinnamon-swagger-prod.md
 
 ### 2026-05-24: Enable Swagger in all environments

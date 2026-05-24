@@ -15,6 +15,10 @@
 
 ## Learnings
 
+### 2026-05-24T16:52:12.609-03:00 — Team update
+- Cinnamon delivered admin user seed (admin@outdoorsshop.dev / Admin@123456) — admin login now unblocks all image upload tests for Creta.
+
+
 - 2026-05-24T16:52:12.609-03:00: Implemented product image upload UI for admin. Key findings: `fetchWithAuth` always injects `Content-Type: application/json` via `mergeHeaders` — multipart uploads need a separate helper (`fetchWithAuthMultipart`) that skips Content-Type so the browser sets it with the boundary. Backend returns `{ imageUrl: string }` from `POST /api/products/{id}/image`; handled both string and object shapes defensively. Image upload is edit-only (requires an existing product ID); the Create modal keeps the text Image URL field. `ProductImageUpload` component manages file selection, 5 MB validation, MIME type check, preview via `URL.createObjectURL`, upload state, and onUploaded callback to sync the imageUrl back into the parent form. Customer-facing display already used `getProductImage(imageUrl)` with placeholder fallback — no changes needed there.
 
 - 2026-05-24T15:03:44.249-03:00: API contract for register endpoint confirmed: `POST /api/v1/auth/register` accepts `{ name, email, password, confirmPassword }` and returns `{ accessToken, refreshToken, expiresAt }` (JWT auto-login). `GET /api/v1/auth/me` (Bearer) returns `{ userId, email, name, customerID, roles[] }` — role is in the `roles` array, mapped in `mapUserProfile()` from `roles.includes('Administrator')` / `roles.includes('Customer')`. Found the frontend was already correct: `auth.api.ts register()` maps `firstName`/`lastName` → `name` (combined) and passes `confirmPassword`, exactly matching the backend `RegisterDto`. Auto-login after register was already implemented (calls `getMe` then `setTokenAndUser` then navigates to `/products`). The actual 500 error was a backend role-seeding bug (Cinnamon/Program.cs fix). `npm run build` passes clean. No frontend code changes were required.
