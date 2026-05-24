@@ -14,7 +14,7 @@ infra/
     sql.bicep             — Azure SQL Server + Database (Basic tier for dev)
     storage.bicep         — Storage Account + blob containers
     appservice.bicep      — App Service Plan (B1/Linux) + Web API
-    functions.bicep       — Functions App (Consumption/Linux) + hosting plan
+    functions.bicep       — Functions App (Flex Consumption/Linux) + hosting plan
     keyvault.bicep        — Key Vault + secrets + managed identity access policies
 ```
 
@@ -33,7 +33,7 @@ infra/
 | → Blob container | `reports` | Private — CSV/Excel exports, SAS-token access |
 | App Service Plan | `asp-outdoors-dev` | B1, Linux |
 | App Service (API) | `app-outdoors-api-dev` | .NET 10, system-assigned managed identity |
-| Functions Hosting Plan | `asp-outdoors-func-dev` | Consumption Y1, Linux |
+| Functions Hosting Plan | `asp-outdoors-func-flex-dev` | Flex Consumption FC1, Linux |
 | Functions App | `func-outdoors-dev` | .NET isolated 10, system-assigned managed identity |
 | Key Vault | `kv-outdoors-dev` | Standard, soft-delete 7 days |
 
@@ -111,6 +111,7 @@ ALTER ROLE db_ddladmin   ADD MEMBER [ShopAdmin];
 ## Architecture notes
 
 - **Managed identities** — both App Service (`app-outdoors-api-dev`) and Functions (`func-outdoors-dev`) use system-assigned managed identities with `get`/`list` access to Key Vault secrets.  
+- **Flex Consumption is required for .NET 10 Functions on Linux** — the Functions app uses Flex Consumption instead of classic Linux Consumption so `dotnet-isolated` 10 starts successfully in Azure.
 - **No secrets in app settings** — all sensitive values are stored in Key Vault and referenced from app settings using `@Microsoft.KeyVault(VaultName=...;SecretName=...)` references, resolved transparently by the Azure App Service runtime.
 - **Key Vault deployment order** — Key Vault is the last module deployed so it can receive the managed identity `principalId` values from App Service and Functions and set access policies correctly in a single pass.
 - **CORS** — the Web API allows the `frontendUrl` origin with credentials. Update `frontendUrl` in `dev.bicepparam` if you deploy the frontend to a static web app.

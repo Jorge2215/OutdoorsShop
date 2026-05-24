@@ -120,7 +120,7 @@ module appservice 'modules/appservice.bicep' = {
 }
 
 // ---------------------------------------------------------------------------
-// Module: Azure Functions App (Consumption plan)
+// Module: Azure Functions App (Flex Consumption plan)
 // ---------------------------------------------------------------------------
 
 module functions 'modules/functions.bicep' = {
@@ -130,6 +130,7 @@ module functions 'modules/functions.bicep' = {
     location: location
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     keyVaultName: 'kv-outdoors-${environmentName}'
+    storageAccountName: storage.outputs.storageAccountName
   }
 }
 

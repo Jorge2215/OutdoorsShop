@@ -42,6 +42,22 @@ The purpose of this project is to compare the effort and efficiency of developin
 ##Prompt Create Tables on Azure SQL DB
 Cinnamon, create the EF Core initial migration. Use the following ConnectioString: Server=tcp:azure-sql-pampa.database.windows.net,1433;Initial Catalog=OutdoorsShopDB;Persist Security Info=False;User ID=ShopAdmin;Password=Jorgito2026!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
 
+##Change deployment for frontend Web application
+
+Current situation:
+- The frontend React application is currently deployed as a static website inside the Azure Storage Account named "stoutdoorsdev".
+
+Goal:
+- Deploy the frontend React Web App to an Azure Static Web App instead.
+- Target resource group: rg-outdoors-dev
+- Target Static Web App name: app-outdoorsweb-swa
+
+Tasks:
+1. Update the deployment script to provision and configure the Static Web App resource.
+2. Configure the build and deployment pipeline (GitHub Actions) to publish the React frontend directly to the Static Web App.
+3. Ensure the Static Web App is connected to the correct resource group and region.
+4. Once the deployment is successful, delete the Storage Account "stoutdoorsdev" to avoid confusion and unnecessary costs.
+
 
 ## Resume
 copilot --resume=561f7ff3-e5a1-4fa8-9a38-91908166a3d2
