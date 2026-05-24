@@ -10,26 +10,29 @@ param appInsightsConnectionString string
 @description('Key Vault name — used to build Key Vault reference strings for app settings')
 param keyVaultName string
 
-var functionsHostingPlanName = 'asp-outdoors-func-${environmentName}'
-var functionAppName = 'func-outdoors-${environmentName}'
+@description('Storage account name used by the Functions host and deployment package container')
+param storageAccountName string
 
-// Consumption plan for Azure Functions (Y1 / Dynamic — scale to zero)
-resource functionsHostingPlan 'Microsoft.Web/serverfarms@2023-01-01' = {
+var functionsHostingPlanName = 'asp-outdoors-func-flex-${environmentName}'
+var functionAppName = 'func-outdoors-${environmentName}'
+var deploymentContainerName = 'function-releases'
+var kvRef = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName='
+
+resource functionsHostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: functionsHostingPlanName
   location: location
-  kind: 'linux'
+  kind: 'functionapp'
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
+    family: 'FC'
   }
   properties: {
-    reserved: true // Required for Linux
+    reserved: true
   }
 }
 
-var kvRef = '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName='
-
-resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
+resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp,linux'
@@ -39,12 +42,36 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
   properties: {
     serverFarmId: functionsHostingPlan.id
     httpsOnly: true
+    keyVaultReferenceIdentity: 'SystemAssigned'
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: 'https://${storageAccountName}.blob.${environment().suffixes.storage}/${deploymentContainerName}'
+          authentication: {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
+          }
+        }
+      }
+      runtime: {
+        name: 'dotnet-isolated'
+        version: '10.0'
+      }
+      scaleAndConcurrency: {
+        instanceMemoryMB: 2048
+        maximumInstanceCount: 100
+        alwaysReady: []
+      }
+    }
     siteConfig: {
-      linuxFxVersion: 'DOTNET-ISOLATED|10'
       appSettings: [
-        // Functions host runtime
         {
           name: 'AzureWebJobsStorage'
+          value: '${kvRef}storage-connection-string)'
+        }
+        {
+          name: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
           value: '${kvRef}storage-connection-string)'
         }
         {
@@ -55,7 +82,6 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'FUNCTIONS_WORKER_RUNTIME'
           value: 'dotnet-isolated'
         }
-        // Application Insights
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: appInsightsConnectionString
@@ -64,12 +90,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
           value: '~3'
         }
-        // Database — resolved from Key Vault
         {
           name: 'ConnectionStrings__DefaultConnection'
           value: '${kvRef}sql-connection-string)'
         }
-        // Storage — resolved from Key Vault
         {
           name: 'Azure__Storage__ConnectionString'
           value: '${kvRef}storage-connection-string)'
@@ -77,10 +101,6 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'Azure__Storage__OrderReceiptsContainer'
           value: 'order-receipts'
-        }
-        {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
         }
       ]
     }

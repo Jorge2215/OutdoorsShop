@@ -55,6 +55,15 @@ resource reportsContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   }
 }
 
+// Private — Flex Consumption deployment packages
+resource functionReleasesContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-04-01' = {
+  name: 'function-releases'
+  parent: blobService
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 output storageAccountName string = storageAccount.name
 output storageAccountId string = storageAccount.id
 output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob

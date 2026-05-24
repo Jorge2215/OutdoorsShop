@@ -1,27 +1,35 @@
-# Status badge: ![Functions CI](https://github.com/Jorge2215/OutdoorsShop/actions/workflows/functions.yml/badge.svg)
+# Status badge: ![Functions CI/CD](https://github.com/Jorge2215/OutdoorsShop/actions/workflows/functions.yml/badge.svg)
 
-name: Functions CI
+name: Functions CI/CD
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, dev]
     paths:
       - 'src/OutdoorsShop.Functions/**'
+      - '.github/workflows/functions.yml'
   pull_request:
     branches: [main, dev]
     paths:
       - 'src/OutdoorsShop.Functions/**'
+      - '.github/workflows/functions.yml'
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: functions-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  build-test-and-deploy:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    env:
+      AZURE_FUNCTIONAPP_NAME: ${{ github.ref_name == 'main' && 'func-outdoors-prod' || 'func-outdoors-dev' }}
+      AZURE_RESOURCE_GROUP: ${{ github.ref_name == 'main' && 'rg-outdoors-prod' || 'rg-outdoors-dev' }}
 
     steps:
       - name: Checkout
@@ -36,10 +44,10 @@ jobs:
         run: dotnet restore src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj
 
       - name: Build Functions project
-        run: dotnet build src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj --no-restore
+        run: dotnet build src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj --configuration Release --no-restore
 
-      - name: Run tests (Functions category)
-        run: dotnet test src/OutdoorsShop.Tests/OutdoorsShop.Tests.csproj --verbosity normal --logger trx --results-directory TestResults
+      - name: Run Functions tests
+        run: dotnet test tests/OutdoorsShop.Functions.Tests/OutdoorsShop.Functions.Tests.csproj --configuration Release --no-build --verbosity normal --logger trx --results-directory TestResults
 
       - name: Upload test results
         if: always()
@@ -49,12 +57,27 @@ jobs:
           path: TestResults/*.trx
 
       - name: Publish Functions artifact
-        run: dotnet publish src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj --configuration Release --output publish/functions
+        run: dotnet publish src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj --configuration Release -r linux-x64 --self-contained false /p:UseAppHost=false --output publish/functions
+
+      - name: Package Functions artifact
+        run: |
+          cd publish/functions
+          zip -r ../functions.zip .
 
       - name: Upload Functions publish artifact
         uses: actions/upload-artifact@v4
         with:
           name: functions-publish
-          path: publish/functions
-          # TODO: Add Azure Functions deploy step here using publish profile secret
-          # See: https://learn.microsoft.com/azure/azure-functions/functions-how-to-github-actions
+          path: publish/functions.zip
+
+      - name: Azure login
+        if: github.event_name == 'push'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Functions package
+        if: github.event_name == 'push'
+        run: az functionapp deployment source config-zip --name "$AZURE_FUNCTIONAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/functions.zip --timeout 600
