@@ -1014,3 +1014,40 @@ The `ShopAdmin` SQL user requires the `db_ddladmin` role so that EF Core's migra
 - Key Vault access policies (not RBAC) are used as specified; can be migrated to RBAC in a future ADR.
 - `db_ddladmin` must be granted manually after first SQL deployment (not automated in Bicep to avoid embedding the app user password in the template).
 
+
+---
+
+# Decision: Use `System.TimeProvider` for Date Abstraction in Azure Functions
+
+**Date:** 2026-05-23T21:00:31.176-03:00  
+**Author:** Cinnamon  
+**Status:** accepted
+
+---
+
+## Context
+
+`SeasonalDiscountFunction` used `DateTime.UtcNow` directly, making the 4 season-specific tests untestable without running them on specific calendar dates. The tests were marked `[Fact(Skip = "...")]`.
+
+## Decision
+
+Use the .NET 8+ built-in `System.TimeProvider` abstract class as the canonical time abstraction. Do **not** introduce a custom `ITimeProvider` interface.
+
+## Rationale
+
+- `TimeProvider` is a first-party .NET 8+ API, no added dependencies.
+- Subclassing for tests (`FakeTimeProvider : TimeProvider`) requires only 3 lines and is self-contained.
+- Optional constructor parameter (`TimeProvider? timeProvider = null`, defaulting to `TimeProvider.System`) keeps all existing callers backward-compatible.
+- `builder.Services.AddSingleton(TimeProvider.System)` is the DI registration for production.
+
+## Consequences
+
+- All date-dependent function tests are deterministic regardless of when CI runs.
+- `DateTime.UtcNow` is banned in Azure Functions code — use `_timeProvider.GetUtcNow().UtcDateTime` instead.
+- Pattern applies to any future function that branches on the current date/time.
+
+## Files Changed
+
+- `src/OutdoorsShop.Functions/Functions/SeasonalDiscountFunction.cs`
+- `src/OutdoorsShop.Functions/Program.cs`
+- `tests/OutdoorsShop.Functions.Tests/Functions/SeasonalDiscountFunctionTests.cs`
