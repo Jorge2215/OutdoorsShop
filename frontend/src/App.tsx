@@ -1,10 +1,50 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Component, lazy, Suspense, useEffect, useState } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AdminRoute } from './components/auth/AdminRoute'
 import { ProtectedRoute } from './components/auth/ProtectedRoute'
 import { Layout } from './components/layout/Layout'
 import { Spinner } from './components/ui/Spinner'
 import { useAuthStore } from './store/authStore'
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error: error.message }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[AppErrorBoundary]', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-parchment p-8 text-center">
+          <p className="font-heading text-2xl text-crimson">Something went wrong</p>
+          <p className="max-w-md text-sm text-ink/70">
+            The app encountered an unexpected error. Please refresh the page or contact support.
+          </p>
+          <pre className="max-w-xl overflow-auto rounded-2xl border border-gold/30 bg-white/60 p-4 text-left text-xs text-ink/80">
+            {this.state.error}
+          </pre>
+          <button
+            type="button"
+            className="rounded-full bg-crimson px-6 py-2 text-sm font-bold text-white transition hover:opacity-90"
+            onClick={() => window.location.reload()}
+          >
+            Reload page
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const ProductsPage = lazy(() => import('./pages/ProductsPage'))
@@ -59,8 +99,9 @@ function AppShell() {
   }
 
   return (
-    <Suspense fallback={<FullScreenLoader />}>
-      <Routes>
+    <AppErrorBoundary>
+      <Suspense fallback={<FullScreenLoader />}>
+        <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/products" element={<ProductsPage />} />
@@ -150,15 +191,18 @@ function AppShell() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-    </Suspense>
+      </Suspense>
+    </AppErrorBoundary>
   )
 }
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppShell />
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <AppShell />
+      </BrowserRouter>
+    </AppErrorBoundary>
   )
 }
 
