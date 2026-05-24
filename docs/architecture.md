@@ -365,6 +365,97 @@ A `main` branch worktree checkout is maintained at `.copilot-main/` for multi-br
 | Key Vault | Azure Key Vault | westus3 | rg-outdoors-dev | Secrets for API + Functions |
 | App Insights / Monitor | Azure Monitor | westus3 | rg-outdoors-dev | Observability via OpenTelemetry |
 
+### 10.1 Resource Relationships & Dependencies
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                       GitHub Actions (CI/CD)                         │
+│   frontend.yml ──► Azure SWA        backend.yml ──► (CI only*)       │
+└────────────────────────┬─────────────────────────────────────────────┘
+                         │
+             ┌───────────▼────────────┐
+             │  Azure Static Web App  │
+             │  app-outdoorsweb-swa   │
+             │  wonderful-plant-...   │
+             │  React SPA / SWA host  │
+             │  (SPA routing: 200 OK) │
+             └───────────┬────────────┘
+                         │  HTTPS (Browser → API)
+                         ▼  JWT Bearer + CORS
+             ┌───────────────────────────┐
+             │  Azure App Service        │
+             │  app-outdoors-api-dev     │
+             │  .NET 10 Web API          │
+             │  (Linux, westus3)         │
+             │  WEBSITE_RUN_FROM_PACKAGE │
+             └──────┬────────┬──────────┘
+                    │        │
+       EF Core      │        │  SDK (BlobServiceClient)
+          ┌─────────▼──┐  ┌──▼──────────────────────┐
+          │  Azure SQL  │  │  Azure Storage Account   │
+          │  azure-sql- │  │  stoutdoorsdev           │
+          │  pampa      │  │  Containers:             │
+          │  Outdoors   │  │  · product-images/       │
+          │  ShopDB     │  │  · order-receipts/       │
+          │  (AzureSqlRg│  │  · webapp-releases/      │
+          └─────────────┘  │  Queues:                 │
+                           │  · payment-confirmations │
+                           │  · stock-updates         │
+                           └──────────┬───────────────┘
+                                      │ Queue Triggers
+                                      ▼
+                         ┌────────────────────────────┐
+                         │  Azure Functions App        │
+                         │  func-outdoors-dev          │
+                         │  .NET 8 isolated            │
+                         │  Flex Consumption plan      │
+                         │                             │
+                         │  · HealthCheckFunction      │
+                         │    (HTTP trigger)           │
+                         │  · SeasonalDiscount         │
+                         │    (Timer: 02:00 UTC daily) │
+                         │  · PaymentConfirmation      │
+                         │    (Queue: payment-         │
+                         │     confirmations)          │
+                         │  · StockUpdate              │
+                         │    (Queue: stock-updates)   │
+                         └──────────┬──────────────────┘
+                                    │ EF Core / SQL Client
+                                    ▼
+                         ┌─────────────────────┐
+                         │  Azure SQL Database  │
+                         │  OutdoorsShopDB      │
+                         │  (AzureSqlRg)        │
+                         └─────────────────────┘
+```
+
+> \* `backend.yml` runs CI only; API deployment is a manual run-from-package blob step (see Known Gaps).
+
+---
+
+### 10.2 Communication Flows
+
+| Flow | Protocol / Mechanism | Notes |
+|---|---|---|
+| Browser → SWA | HTTPS | Static files served by Azure SWA CDN; `navigationFallback` ensures SPA routes return HTTP 200 |
+| Browser → API (`app-outdoors-api-dev`) | HTTPS + JWT Bearer | CORS policy `ReactDevPolicy` in ASP.NET Core middleware; Azure platform CORS disabled |
+| API → Azure SQL (`OutdoorsShopDB`) | TCP/TLS (EF Core) | Connection string via App Settings (Key Vault reference); EF Core 10 |
+| API → Azure Blob Storage (`stoutdoorsdev`) | HTTPS (Azure SDK) | Product image URLs sourced from Unsplash CDN; order receipts/reports written via `BlobServiceClient` |
+| Azure Functions → Azure SQL | TCP/TLS (EF Core / SQL Client) | `SeasonalDiscountFunction` (timer) reads/writes discount data; both queue functions update order/stock records |
+| Azure Storage Queues → Azure Functions | Queue trigger (SDK polling) | `payment-confirmations` queue → `PaymentConfirmationFunction`; `stock-updates` queue → `StockUpdateFunction` |
+| GitHub Actions → Azure SWA | SWA Deploy Action (token) | `frontend.yml` on push to `main`; requires `AZURE_STATIC_WEB_APPS_API_TOKEN` secret |
+
+---
+
+### 10.3 Resource Group Map
+
+| Resource Group | Resources |
+|---|---|
+| `rg-outdoors-dev` | App Service (`app-outdoors-api-dev`), Azure Functions (`func-outdoors-dev`), Storage Account (`stoutdoorsdev`), Azure SWA (`app-outdoorsweb-swa`), Key Vault, App Insights |
+| `AzureSqlRg` | SQL Server (`azure-sql-pampa`), SQL Database (`OutdoorsShopDB`) |
+
+> ⚠️ **Cross-RG dependency:** SQL lives in `AzureSqlRg`, not `rg-outdoors-dev`. Firewall rules and network policies for the database must be applied to `AzureSqlRg`. Bicep parameter `deploySql=false` prevents accidental re-provisioning.
+
 ---
 
 ## 11. Architecture Decision Records (ADRs)

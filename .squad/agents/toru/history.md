@@ -25,3 +25,10 @@
   - Confirmed: `stoutdoorsdev` stores `webapp-releases/api-dev.zip` in addition to product images and queues.
   - Known gap noted: `backend.yml` runs CI only; API deployment is a manual run-from-package blob step.
   - Known gap noted: CORS `AllowedOrigins` still includes old `stoutdoorswebdev` origin post-SWA migration.
+
+- **2026-05-24 — Azure resource relationships added to architecture doc** (`docs/architecture.md` Section 10 enhanced):
+  - Added ASCII dependency diagram showing GitHub Actions → SWA/App Service → SQL/Blob Storage → Functions chain.
+  - Added Communication Flows table covering all runtime paths (Browser, API, Functions, CI/CD).
+  - Added Resource Group Map: `rg-outdoors-dev` (App Service, Functions, SWA, Storage, KV, Insights) vs `AzureSqlRg` (SQL Server + DB).
+  - ⚠️ **Critical note:** SQL is in `AzureSqlRg`, not `rg-outdoors-dev` — firewall rules must target `AzureSqlRg`. `deploySql=false` in Bicep prevents accidental re-provisioning.
+  - `SeasonalDiscountFunction` correctly shown as Timer trigger (02:00 UTC), not HTTP.
