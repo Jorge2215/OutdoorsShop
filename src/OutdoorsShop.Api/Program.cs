@@ -36,7 +36,13 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddSwagger();
 
 // CORS — allow React dev server
-var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
+var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins")
+    .GetChildren()
+    .Select(c => c.Value ?? string.Empty)
+    .Where(v => v.Length > 0)
+    .ToArray();
+if (allowedOrigins.Length == 0)
+    allowedOrigins = ["http://localhost:5173"];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("ReactDevPolicy", policy =>
@@ -58,6 +64,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi(); // OpenAPI document at /openapi/v1.json
 }
 
+app.UseRouting();
 app.UseHttpsRedirection();
 app.UseCors("ReactDevPolicy");
 app.UseAuthentication();
