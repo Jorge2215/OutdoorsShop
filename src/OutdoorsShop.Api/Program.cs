@@ -59,10 +59,8 @@ var app = builder.Build();
 // Middleware pipeline
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi(); // OpenAPI document at /openapi/v1.json
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseRouting();
 app.UseHttpsRedirection();

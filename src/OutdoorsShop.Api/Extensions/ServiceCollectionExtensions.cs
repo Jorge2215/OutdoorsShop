@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using OutdoorsShop.Core.Interfaces;
 using OutdoorsShop.Infrastructure.Data;
 using OutdoorsShop.Infrastructure.Identity;
@@ -112,14 +113,14 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddSwagger(this IServiceCollection services)
     {
-        services.AddOpenApi(options =>
+        services.AddEndpointsApiExplorer();
+        services.AddSwaggerGen(options =>
         {
-            options.AddDocumentTransformer((document, context, cancellationToken) =>
+            options.SwaggerDoc("v1", new OpenApiInfo
             {
-                document.Info.Title = "OutdoorsShop API";
-                document.Info.Version = "v1";
-                document.Info.Description = "Backend API for the Outdoors Shop e-commerce platform.";
-                return Task.CompletedTask;
+                Title = "OutdoorsShop API",
+                Version = "v1",
+                Description = "Backend API for the Outdoors Shop e-commerce platform."
             });
         });
 
