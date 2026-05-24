@@ -79,40 +79,40 @@ resource webApp 'Microsoft.Web/sites@2023-01-01' = {
         }
         // JWT settings — secret resolved from Key Vault
         {
-          name: 'Jwt__Secret'
+          name: 'JwtSettings__Secret'
           value: '${kvRef}jwt-secret)'
         }
         {
-          name: 'Jwt__Issuer'
+          name: 'JwtSettings__Issuer'
           value: jwtIssuer
         }
         {
-          name: 'Jwt__Audience'
+          name: 'JwtSettings__Audience'
           value: jwtAudience
         }
         {
-          name: 'Jwt__AccessTokenExpiryMinutes'
+          name: 'JwtSettings__AccessTokenExpiryMinutes'
           value: '15'
         }
         {
-          name: 'Jwt__RefreshTokenExpiryDays'
+          name: 'JwtSettings__RefreshTokenExpiryDays'
           value: '7'
         }
         // Blob storage connection — resolved from Key Vault
         {
-          name: 'Azure__Storage__ConnectionString'
+          name: 'AzureStorage__ConnectionString'
           value: '${kvRef}storage-connection-string)'
         }
         {
-          name: 'Azure__Storage__ProductImagesContainer'
+          name: 'AzureStorage__ProductImagesContainer'
           value: 'product-images'
         }
         {
-          name: 'Azure__Storage__OrderReceiptsContainer'
+          name: 'AzureStorage__OrderReceiptsContainer'
           value: 'order-receipts'
         }
         {
-          name: 'Azure__Storage__ReportsContainer'
+          name: 'AzureStorage__ReportsContainer'
           value: 'reports'
         }
         {

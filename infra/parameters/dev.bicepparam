@@ -15,5 +15,7 @@ using '../main.bicep'
 param environmentName = 'dev'
 param location = 'eastus'
 param sqlAdminLogin = 'sqladmin'
+param deploySql = false
+param existingSqlServerFqdn = 'azure-sql-pampa.database.windows.net'
 param frontendUrl = 'http://localhost:3000'
 param jwtAudience = 'OutdoorsShopClient'

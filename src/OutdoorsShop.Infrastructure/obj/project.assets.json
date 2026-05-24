@@ -3715,6 +3715,7 @@
     "net10.0": [
       "Azure.Storage.Blobs >= 12.28.0",
       "Microsoft.AspNetCore.Identity.EntityFrameworkCore >= 10.0.8",
+      "Microsoft.Data.SqlClient >= 6.1.1",
       "Microsoft.EntityFrameworkCore.SqlServer >= 10.0.8",
       "Microsoft.EntityFrameworkCore.Tools >= 10.0.8",
       "Microsoft.Extensions.Configuration.EnvironmentVariables >= 10.0.8",
@@ -3785,6 +3786,10 @@
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
             "target": "Package",
             "version": "[10.0.8, )"
+          },
+          "Microsoft.Data.SqlClient": {
+            "target": "Package",
+            "version": "[6.1.1, )"
           },
           "Microsoft.EntityFrameworkCore.SqlServer": {
             "target": "Package",
