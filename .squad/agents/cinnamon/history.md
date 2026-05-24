@@ -20,6 +20,12 @@
 - 
 - ## Learnings
 - 
+- ### 2026-05-24T15:11:02.555-03:00 â€” Auth refresh cookie cross-origin fix
+- 
+- - **Refresh cookie policy:** `src/OutdoorsShop.Api/Controllers/AuthController.cs` must use `SameSite=None` with `Secure=true` for both the refresh-token set cookie and the logout clear-cookie path; `SameSite=Strict` breaks cross-origin refresh when the frontend origin differs from the API origin.
+- - **JWT display name claim:** `GenerateTokenAsync` should populate `given_name` from `customer.Name` instead of `user.UserName`, because registration stores the email in `UserName`.
+- - **Deployment/verification:** Published `src/OutdoorsShop.Api/OutdoorsShop.Api.csproj` for Linux, zipped via `ZipFile.CreateFromDirectory`, uploaded to `stoutdoorsdev/webapp-releases/api-dev.zip`, restarted `app-outdoors-api-dev`, then verified `POST /api/v1/auth/register` and `POST /api/v1/auth/refresh` both returned `200` and the live `Set-Cookie` header now shows `samesite=none`.
+- 
 - ### 2026-05-23 â€” EF Core migration + entity key convention fix
 - 
 - - **Migration file location:** `src/OutdoorsShop.Infrastructure/Data/Migrations/20260523162304_InitialCreate.cs`
