@@ -19,6 +19,23 @@
 - - **Purpose:** Proof of concept comparing GitHub Copilot + Squad vs traditional development
 - 
 - ## Learnings
+
+### 2026-05-24T19:19:19.460-03:00 — Live bug fix: CORS origin mismatch
+
+- **Both bugs (registration + catalog "Failed to fetch") had ONE root cause**: `AllowedOrigins__0` in the App Service env var pointed to `brave-beach-044d7c610.6.azurestaticapps.net`, but the actual live SWA is `wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`. The `wonderful-plant` SWA is the one in `rg-outdoors-dev` with the React app deployed; `brave-beach` returns an Azure 404.
+- **Diagnostic pattern**: CORS preflight returning 204 with NO `Access-Control-Allow-Origin` header = origin rejected by CORS policy. vs 204 WITH `Access-Control-Allow-Origin` = origin accepted.
+- **How to identify the live SWA**: Use `az staticwebapp list --query "[].{name:name,url:defaultHostname}"` to see all SWAs and their URLs. Cross-check against CORS config.
+- **How to identify what's deployed on a SWA**: Fetch the root HTML, extract the JS bundle URL, then grep the bundle for `app-outdoors` or `localhost` to confirm which API URL is baked in.
+- **App Service env vars override appsettings.json**: Updating `AllowedOrigins__0` in the App Service config takes effect within ~30 seconds (no redeploy needed). Still update appsettings.json + commit so code matches reality.
+- **Fix**: Updated `AllowedOrigins__0` App Service env var + `appsettings.json`, committed as `68c2509` to dev.
+- **Verified**: Both `OPTIONS /api/v1/products` and `OPTIONS /api/v1/auth/register` from `wonderful-plant` origin now return 204 with proper ACAO headers.
+
+### 2026-05-24T18:57:46.744-03:00 — dev → main merge
+
+- `main` branch is checked out in the `.copilot-main` linked worktree; `git checkout main` from the repo root is blocked. All main-branch operations must run from `.copilot-main`.
+- Merge conflict in `Program.cs` arose because main had the basic role-seeding block while dev had the extended version with `ILogger<Program>` and admin user seed. Resolution: always prefer the dev (fuller) version.
+- Merge commit: `56f6dec` — "Merge dev into main: auth fixes, CORS, Swagger, blob image upload, admin seed". Push to `origin/main` succeeded.
+- Commits synced: `22e971e` (cookie/JWT fix), `cada3b2` (CORS hardening), `9076954`+`943db2e` (Swagger all envs), `708af75` (admin seed), `526b8fa` (blob upload endpoint), `164a8e7` (frontend upload UI), plus squad/docs commits.
 - 
 - ### 2026-05-24T16:52:12.609-03:00 — Admin user seed
 - 
