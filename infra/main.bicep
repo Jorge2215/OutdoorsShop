@@ -134,6 +134,18 @@ module functions 'modules/functions.bicep' = {
 }
 
 // ---------------------------------------------------------------------------
+// Module: Azure Static Web App (Free tier, SPA host)
+// ---------------------------------------------------------------------------
+
+module staticwebapp 'modules/staticwebapp.bicep' = {
+  name: 'staticwebapp'
+  params: {
+    environmentName: environmentName
+    location: location
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Module: Key Vault + secrets + managed identity access policies
 // Deployed last so it can consume principalIds from App Service and Functions.
 // ---------------------------------------------------------------------------
@@ -189,3 +201,6 @@ output keyVaultUri string = deploySql
 
 @description('SQL Server FQDN')
 output sqlServerFqdn string = resolvedSqlServerFqdn
+
+@description('Static Web App URL')
+output staticWebAppUrl string = 'https://${staticwebapp.outputs.defaultHostname}'
