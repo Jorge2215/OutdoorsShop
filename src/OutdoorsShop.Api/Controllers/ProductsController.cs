@@ -14,15 +14,18 @@ public class ProductsController : ControllerBase
     private readonly IProductRepository _productRepo;
     private readonly IInventoryRepository _inventoryRepo;
     private readonly ICategoryRepository _categoryRepo;
+    private readonly IBlobStorageService _blobStorage;
 
     public ProductsController(
         IProductRepository productRepo,
         IInventoryRepository inventoryRepo,
-        ICategoryRepository categoryRepo)
+        ICategoryRepository categoryRepo,
+        IBlobStorageService blobStorage)
     {
         _productRepo = productRepo;
         _inventoryRepo = inventoryRepo;
         _categoryRepo = categoryRepo;
+        _blobStorage = blobStorage;
     }
 
     // GET /api/v1/products?categoryId=1&search=tent
@@ -158,6 +161,43 @@ public class ProductsController : ControllerBase
         await _productRepo.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    // POST /api/v1/products/{id}/image  [Administrator]
+    [HttpPost("{id:int}/image")]
+    [Authorize(Roles = "Administrator")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UploadImage(int id, IFormFile file)
+    {
+        var product = await _productRepo.GetByIdAsync(id);
+        if (product is null)
+            return NotFound(new { message = $"Product {id} not found." });
+
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "No file uploaded." });
+
+        var allowedContentTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg", "image/png", "image/gif", "image/webp"
+        };
+        if (!allowedContentTypes.Contains(file.ContentType))
+            return BadRequest(new { message = "Invalid file type. Allowed types: jpg, jpeg, png, gif, webp." });
+
+        const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
+        if (file.Length > MaxFileSize)
+            return BadRequest(new { message = "File size exceeds the 5 MB limit." });
+
+        using var stream = file.OpenReadStream();
+        var imageUrl = await _blobStorage.UploadProductImageAsync(stream, file.FileName, file.ContentType, id);
+
+        product.ImageUrl = imageUrl;
+        await _productRepo.UpdateAsync(product);
+        await _productRepo.SaveChangesAsync();
+
+        return Ok(new { imageUrl });
     }
 
     private static ProductDto ToDto(Product p, int quantityAvailable) => new()
