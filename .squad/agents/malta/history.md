@@ -2,6 +2,8 @@
 
 ## Core Context
 
+## Sprint Context (2026-05-24): Admin Product Catalog frontend sprint is coming. Backend (Products, Categories, Inventory controllers) is fully built with [Authorize(Roles=Administrator)]. Malta owns 3 tasks: AdminProductsPage (M), AdminCategoriesPage (S), categoriesApi mutations (S).
+
 - **Project:** Outdoors Shop
 - **Owner:** Jorgito
 - **Role:** Frontend Developer

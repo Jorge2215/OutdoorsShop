@@ -6,6 +6,8 @@
 - # Cinnamon — History
 - 
 - ## Core Context
+
+## Sprint Context (2026-05-24): Toru confirmed Admin Product Catalog backend is fully complete. Frontend sprint (Malta) is next. Creta has 60 test scenarios ready including integration tests for Products/Categories/Inventory admin APIs.
 - 
 - - **Project:** Outdoors Shop
 - - **Owner:** Jorgito
@@ -19,6 +21,13 @@
 - - **Purpose:** Proof of concept comparing GitHub Copilot + Squad vs traditional development
 - 
 - ## Learnings
+
+### 2026-05-24T19:41:04.973-03:00 — Selective dev commit + dev → main merge
+
+- Selective source commit on `dev`: `56aaffc` — committed only real source/config files (`.copilot-main`, workflow files, infra files, `BasePrompt.md`, `frontend/public/staticwebapp.config.json`, `src/OutdoorsShop.Functions/Functions/HealthFunction.cs`) and left build artifacts/untracked packages out.
+- Pushed `dev` first, then merged from the `.copilot-main` worktree into `main` as `914e9af` and pushed `origin/main` successfully.
+- `git log --oneline -3` on `main` now shows the merge commit plus newer `dev` commits, so `68c2509` is not visible in the top 3 lines even though `git merge-base --is-ancestor 68c2509 main` confirms the CORS fix is included in `main`.
+- Regression check: `dotnet test .\\OutdoorsShop.slnx --verbosity minimal` still fails with the pre-existing SQLite integration-test issue (`AspNetRoles` table missing); Functions tests pass.
 
 ### 2026-05-24T19:19:19.460-03:00 — Live bug fix: CORS origin mismatch
 
