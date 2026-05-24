@@ -8,14 +8,8 @@ using OutdoorsShop.Infrastructure.Data;
 namespace OutdoorsShop.Functions.Tests.Functions;
 
 /// <summary>
-/// SeasonalDiscountFunction reads DateTime.UtcNow directly.
-/// Tests that target a specific season are skipped because the function lacks
-/// an IClock/IDateTimeProvider abstraction. The gap is documented in
-/// .squad/decisions/inbox/creta-test-strategy.md.
-///
-/// The tests below cover: season-independent logic (active-only filter) and
-/// a comprehensive current-season smoke test that validates ALL multipliers
-/// based on today's actual month.
+/// SeasonalDiscountFunction uses TimeProvider for date abstraction (.NET 8+).
+/// FakeTimeProvider subclasses TimeProvider to pin dates for season-specific tests.
 /// </summary>
 public class SeasonalDiscountFunctionTests
 {
@@ -109,35 +103,100 @@ public class SeasonalDiscountFunctionTests
             "inactive products are filtered out by the global query filter and must not be modified");
     }
 
-    [Fact(Skip = "Requires IClock abstraction to mock DateTime.UtcNow. " +
-                 "Season-specific tests are non-deterministic without date injection. " +
-                 "See .squad/decisions/inbox/creta-test-strategy.md for remediation notes.")]
+    [Fact]
     public async Task Execute_AppliesWinterDiscount_ToTrekkingAndCampingProducts()
     {
-        await Task.CompletedTask;
+        await using var db = CreateDbContext("seasonal-winter");
+        SeedAllCategories(db);
+        SeedAllProducts(db, startId: 10);
+        await db.SaveChangesAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 1, 15, 2, 0, 0, TimeSpan.Zero));
+        var function = new SeasonalDiscountFunction(db, NullLogger<SeasonalDiscountFunction>.Instance, clock);
+        await function.Run(null!);
+
+        var products = await db.Products.ToListAsync();
+        products.First(p => p.CategoryID == CampingCategoryId).DiscountMultiplier.Should().Be(0.85m);
+        products.First(p => p.CategoryID == TrekkingCategoryId).DiscountMultiplier.Should().Be(0.85m);
+        products.First(p => p.CategoryID == CyclingCategoryId).DiscountMultiplier.Should().Be(1.0m);
+        products.First(p => p.CategoryID == ClimbingCategoryId).DiscountMultiplier.Should().Be(1.0m);
     }
 
-    [Fact(Skip = "Requires IClock abstraction to mock DateTime.UtcNow. " +
-                 "Season-specific tests are non-deterministic without date injection. " +
-                 "See .squad/decisions/inbox/creta-test-strategy.md for remediation notes.")]
+    [Fact]
     public async Task Execute_AppliesSummerDiscount_ToCyclingAndClimbingProducts()
     {
-        await Task.CompletedTask;
+        await using var db = CreateDbContext("seasonal-summer");
+        SeedAllCategories(db);
+        SeedAllProducts(db, startId: 20);
+        await db.SaveChangesAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 7, 15, 2, 0, 0, TimeSpan.Zero));
+        var function = new SeasonalDiscountFunction(db, NullLogger<SeasonalDiscountFunction>.Instance, clock);
+        await function.Run(null!);
+
+        var products = await db.Products.ToListAsync();
+        products.First(p => p.CategoryID == CampingCategoryId).DiscountMultiplier.Should().Be(1.0m);
+        products.First(p => p.CategoryID == TrekkingCategoryId).DiscountMultiplier.Should().Be(1.0m);
+        products.First(p => p.CategoryID == CyclingCategoryId).DiscountMultiplier.Should().Be(0.90m);
+        products.First(p => p.CategoryID == ClimbingCategoryId).DiscountMultiplier.Should().Be(0.90m);
     }
 
-    [Fact(Skip = "Requires IClock abstraction to mock DateTime.UtcNow. " +
-                 "Season-specific tests are non-deterministic without date injection. " +
-                 "See .squad/decisions/inbox/creta-test-strategy.md for remediation notes.")]
+    [Fact]
     public async Task Execute_ResetsDiscount_InSpring()
     {
-        await Task.CompletedTask;
+        await using var db = CreateDbContext("seasonal-spring");
+        SeedAllCategories(db);
+        SeedAllProducts(db, startId: 30, initialMultiplier: 0.85m);
+        await db.SaveChangesAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 4, 15, 2, 0, 0, TimeSpan.Zero));
+        var function = new SeasonalDiscountFunction(db, NullLogger<SeasonalDiscountFunction>.Instance, clock);
+        await function.Run(null!);
+
+        var products = await db.Products.ToListAsync();
+        products.Should().AllSatisfy(p =>
+            p.DiscountMultiplier.Should().Be(1.0m, $"Spring resets all multipliers to 1.0 (product {p.ProductID})"));
     }
 
-    [Fact(Skip = "Requires IClock abstraction to mock DateTime.UtcNow. " +
-                 "Season-specific tests are non-deterministic without date injection. " +
-                 "See .squad/decisions/inbox/creta-test-strategy.md for remediation notes.")]
+    [Fact]
     public async Task Execute_ResetsDiscount_InAutumn()
     {
-        await Task.CompletedTask;
+        await using var db = CreateDbContext("seasonal-autumn");
+        SeedAllCategories(db);
+        SeedAllProducts(db, startId: 40, initialMultiplier: 0.90m);
+        await db.SaveChangesAsync();
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 15, 2, 0, 0, TimeSpan.Zero));
+        var function = new SeasonalDiscountFunction(db, NullLogger<SeasonalDiscountFunction>.Instance, clock);
+        await function.Run(null!);
+
+        var products = await db.Products.ToListAsync();
+        products.Should().AllSatisfy(p =>
+            p.DiscountMultiplier.Should().Be(1.0m, $"Autumn resets all multipliers to 1.0 (product {p.ProductID})"));
+    }
+
+    private static void SeedAllCategories(AppDbContext db)
+    {
+        db.Categories.AddRange(
+            new ProductCategory { CategoryID = CampingCategoryId, Name = "Camping", IsActive = true },
+            new ProductCategory { CategoryID = TrekkingCategoryId, Name = "Trekking", IsActive = true },
+            new ProductCategory { CategoryID = CyclingCategoryId, Name = "Cycling", IsActive = true },
+            new ProductCategory { CategoryID = ClimbingCategoryId, Name = "Climbing", IsActive = true });
+    }
+
+    private static void SeedAllProducts(AppDbContext db, int startId, decimal initialMultiplier = 1.0m)
+    {
+        db.Products.AddRange(
+            new Product { ProductID = startId, Name = "Tent", CategoryID = CampingCategoryId, Price = 100m, IsActive = true, DiscountMultiplier = initialMultiplier },
+            new Product { ProductID = startId + 1, Name = "Boots", CategoryID = TrekkingCategoryId, Price = 80m, IsActive = true, DiscountMultiplier = initialMultiplier },
+            new Product { ProductID = startId + 2, Name = "Bike", CategoryID = CyclingCategoryId, Price = 500m, IsActive = true, DiscountMultiplier = initialMultiplier },
+            new Product { ProductID = startId + 3, Name = "Harness", CategoryID = ClimbingCategoryId, Price = 120m, IsActive = true, DiscountMultiplier = initialMultiplier });
+    }
+
+    private sealed class FakeTimeProvider : TimeProvider
+    {
+        private readonly DateTimeOffset _now;
+        public FakeTimeProvider(DateTimeOffset now) => _now = now;
+        public override DateTimeOffset GetUtcNow() => _now;
     }
 }

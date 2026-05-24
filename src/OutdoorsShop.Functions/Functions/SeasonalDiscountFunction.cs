@@ -9,15 +9,17 @@ public class SeasonalDiscountFunction
 {
     private readonly AppDbContext _dbContext;
     private readonly ILogger<SeasonalDiscountFunction> _logger;
+    private readonly TimeProvider _timeProvider;
 
     // CategoryID → name mapping (seeded in AppDbContext)
     private static readonly int[] WinterCategoryIds = [1, 2]; // Camping, Trekking
     private static readonly int[] SummerCategoryIds = [3, 4]; // Cycling, Climbing
 
-    public SeasonalDiscountFunction(AppDbContext dbContext, ILogger<SeasonalDiscountFunction> logger)
+    public SeasonalDiscountFunction(AppDbContext dbContext, ILogger<SeasonalDiscountFunction> logger, TimeProvider? timeProvider = null)
     {
         _dbContext = dbContext;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -29,7 +31,7 @@ public class SeasonalDiscountFunction
     [Function("SeasonalDiscount")]
     public async Task Run([TimerTrigger("0 0 2 * * *")] TimerInfo timerInfo)
     {
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
         _logger.LogInformation("SeasonalDiscount triggered at {UtcNow}", now);
 
         var season = GetSeason(now.Month);
