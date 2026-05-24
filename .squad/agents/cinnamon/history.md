@@ -88,3 +88,30 @@
 - **FakeTimeProvider** pattern: a `sealed class FakeTimeProvider : TimeProvider` that overrides `GetUtcNow()` returning a pinned `DateTimeOffset` — lets each test fix the date to a specific month.
 - **`builder.Services.AddSingleton(TimeProvider.System);`** added to `src/OutdoorsShop.Functions/Program.cs` so DI injects the real clock in production.
 - **Result:** 4 previously skipped tests now pass; total functions test count: 20 passed, 0 skipped.
+
+### 2026-05-24T12:58:17.459-03:00 — Azure Functions 503 root cause and Flex fix
+
+- **Root cause:** `func-outdoors-dev` was deployed as `.NET 10` isolated on the classic **Linux Consumption (Y1)** plan. Microsoft documents that `.NET 10` isolated apps can't run on Linux Consumption; they must use **Flex Consumption** instead.
+- **Observed symptoms:** `https://func-outdoors-dev.azurewebsites.net` and `/api/health` returned `503`, `az functionapp function list` failed with host `ServiceUnavailable`, and the original workflow had no deploy step.
+- **Azure fix applied:** Deleted the broken Linux Consumption app, recreated `func-outdoors-dev` on **Flex Consumption** in `westus3`, re-granted Key Vault secret access to the new managed identity, restored the app settings, and redeployed the Functions package.
+- **Deployment packaging detail:** Flex zip deploy requires the `.azurefunctions/` directory at the zip root. Packaging from the publish directory root (for example `tar -a -cf <zip> .`) works; wildcard-only archives can drop hidden folders and fail validation.
+- **Repo follow-up:** Added an anonymous `GET /api/health` function, updated `functions.yml` to publish a Linux package and deploy it with Azure CLI, and updated infra/docs toward Flex Consumption.
+- **Verification:** `az functionapp function list` now returns Health + the three background functions, `GET https://func-outdoors-dev.azurewebsites.net/api/health` returns `200 {"status":"ok"}`, and the site root returns `200`.
+
+### 2026-05-24T13:49:18.068-03:00 — Queue trigger recovery on Flex Consumption
+
+- **Storage account:** `AzureWebJobsStorage` for `func-outdoors-dev` resolves to storage account `stoutdoorsdev`.
+- **Queue provisioning:** created the missing `payment-confirmations` and `stock-updates` queues in `stoutdoorsdev`.
+- **Code contract check:** `src/OutdoorsShop.Functions/Functions/PaymentConfirmationFunction.cs` and `src/OutdoorsShop.Functions/Functions/StockUpdateFunction.cs` already bind to `payment-confirmations` and `stock-updates` exactly — no source code rename was needed.
+- **Flex runtime fix:** queue messages still sat with `dequeueCount = 0` after queue creation, restart, and trigger sync. Adding function-specific always-ready instances (`function:PaymentConfirmation=1`, `function:StockUpdate=1`) in the Flex scale config brought the queue listeners online.
+- **Verification:** after the always-ready change and restart, both queues drained their smoke-test messages; `stock-updates` cleared within ~30 seconds and `payment-confirmations` cleared on the next check after ~90 seconds.
+- **Diagnostics:** Application Insights showed the function group targets for `function:paymentconfirmation` and `function:stockupdate` after the scale update, and no new queue-function exceptions were recorded during verification.
+
+### 2026-05-24T14:24:58.550-03:00 — Product image URLs wired for all 16 products
+
+- **Approach:** Used Unsplash CDN free-tier images (no attribution required for display). Each product got a unique, relevant photo URL in the format `https://images.unsplash.com/photo-{id}?w=400&fit=crop&auto=format`.
+- **Image assignment:** Camping (IDs 1–4): campfire/tent, sleeping bag, camp stove, night hiking; Trekking (IDs 5–8): hiking trail, hiking boots, hydration pack, GPS/map; Cycling (IDs 9–12): mountain biking, cycling, bike lights, bike repair; Climbing (IDs 13–16): sport climbing, bouldering/chalk, climbing shoes, carabiners.
+- **SQL approach:** Created `scripts/update-image-urls.sql` and ran it via `sqlcmd` against `azure-sql-pampa.database.windows.net / OutdoorsShopDB` using `ShopAdmin` credentials (from user secrets). Required opening a firewall rule for agent IP first: `az sql server firewall-rule create --resource-group AzureSqlRg --server azure-sql-pampa --name AllowCinnamonAgent`.
+- **SQL server lives in `AzureSqlRg`** (not `rg-outdoors-dev`) — the server predates the project's resource group.
+- **Seed script updated:** `scripts/seed-products.sql` now includes the Unsplash URLs in the INSERT values (replacing NULL) so future reseeds will also populate ImageUrl.
+- **Verification:** `GET https://app-outdoors-api-dev.azurewebsites.net/api/v1/products` returned 16 products, all with non-null `imageUrl` fields.
