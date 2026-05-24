@@ -107,6 +107,15 @@
 - **Verification:** after the always-ready change and restart, both queues drained their smoke-test messages; `stock-updates` cleared within ~30 seconds and `payment-confirmations` cleared on the next check after ~90 seconds.
 - **Diagnostics:** Application Insights showed the function group targets for `function:paymentconfirmation` and `function:stockupdate` after the scale update, and no new queue-function exceptions were recorded during verification.
 
+### 2026-05-24T14:43:10.624-03:00 — Identity role seeding + /api/health fix
+
+- **Root cause:** `AspNetRoles` table was empty on cold start; `AddToRoleAsync("Customer")` fails with 500 if the role row doesn't exist.
+- **Fix:** Added a startup role-seeding block in `src/OutdoorsShop.Api/Program.cs` immediately before `app.Run()`. Uses `RoleManager<IdentityRole>` (already registered via `AddIdentity<ApplicationUser, IdentityRole>`) to idempotently create `Administrator` and `Customer` roles.
+- **Health endpoint:** Added `app.MapGet("/api/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous()` as a minimal-API endpoint (no controller needed).
+- **Deploy pattern reminder:** `WEBSITE_RUN_FROM_PACKAGE` uses a blob SAS URL. Must publish for Linux (`-r linux-x64 --self-contained false /p:UseAppHost=false`), zip the publish output using `[System.IO.Compression.ZipFile]::CreateFromDirectory` (not `Compress-Archive -Path *` — wildcard zip only captured 3 entries), upload to `stoutdoorsdev/webapp-releases/api-dev.zip`, then restart the App Service.
+- **Verification:** `GET /api/health` → `200 {"status":"ok"}`; `POST /api/v1/auth/register` → `200` with JWT; `POST /api/v1/auth/login` → `200` with JWT. No more 500 on registration.
+- **Committed:** `dev` (786cc88) and cherry-picked to `main` (a6a1780) via `.copilot-main` worktree. Both branches pushed.
+
 ### 2026-05-24T14:24:58.550-03:00 — Product image URLs wired for all 16 products
 
 - **Approach:** Used Unsplash CDN free-tier images (no attribution required for display). Each product got a unique, relevant photo URL in the format `https://images.unsplash.com/photo-{id}?w=400&fit=crop&auto=format`.
