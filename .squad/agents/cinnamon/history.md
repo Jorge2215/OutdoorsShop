@@ -70,7 +70,11 @@
 - **functions.yml**: triggers on push/PR to `main`/`dev` for `src/OutdoorsShop.Functions/**`; builds only the Functions project; runs all tests in `OutdoorsShop.Tests`; publishes Functions artifact to `publish/functions` with a placeholder comment for Azure deploy step.
 - **All workflows**: `permissions: contents: read`, `actions/checkout@v4`, `actions/setup-dotnet@v4` (`10.x`), `actions/setup-node@v4` (`20`), `concurrency` groups with `cancel-in-progress: true`, badge comment at top of each file.
 
-### 2026-05-23 — CI/CD workflows added
+### 2026-05-23T21:00:31.176-03:00 — TimeProvider injection for date-dependent Azure Functions testing
 
-- Added three GitHub Actions workflows: .github/workflows/backend.yml, .github/workflows/frontend.yml, .github/workflows/functions.yml.
-- Decision filed: .squad/decisions/inbox/cinnamon-cicd-workflows.md (merged into .squad/decisions.md).
+- **Pattern used:** .NET 8+ `System.TimeProvider` abstract class — the canonical Microsoft abstraction for time. No custom `ITimeProvider` interface needed.
+- **SeasonalDiscountFunction** now accepts `TimeProvider? timeProvider = null` as an optional constructor parameter; defaults to `TimeProvider.System` so production DI wiring is backward-compatible.
+- **`_timeProvider.GetUtcNow().UtcDateTime`** replaces all `DateTime.UtcNow` calls in the function.
+- **FakeTimeProvider** pattern: a `sealed class FakeTimeProvider : TimeProvider` that overrides `GetUtcNow()` returning a pinned `DateTimeOffset` — lets each test fix the date to a specific month.
+- **`builder.Services.AddSingleton(TimeProvider.System);`** added to `src/OutdoorsShop.Functions/Program.cs` so DI injects the real clock in production.
+- **Result:** 4 previously skipped tests now pass; total functions test count: 20 passed, 0 skipped.

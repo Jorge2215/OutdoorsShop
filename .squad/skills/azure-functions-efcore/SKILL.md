@@ -93,6 +93,84 @@ For seasonal discount logic, active-only is correct — no override needed.
 
 ---
 
+## Testing Date-Dependent Functions with `TimeProvider`
+
+### Problem
+
+Functions that branch on `DateTime.UtcNow` (e.g., seasonal discount logic) produce non-deterministic tests — a test for "Winter behaviour" fails when run in July.
+
+### Pattern: Inject `System.TimeProvider` (.NET 8+)
+
+`TimeProvider` is the canonical Microsoft abstraction for time — no custom interface needed.
+
+#### 1. Add `TimeProvider` field and optional constructor parameter
+
+```csharp
+public class SeasonalDiscountFunction
+{
+    private readonly TimeProvider _timeProvider;
+
+    public SeasonalDiscountFunction(
+        AppDbContext dbContext,
+        ILogger<SeasonalDiscountFunction> logger,
+        TimeProvider? timeProvider = null)
+    {
+        _dbContext = dbContext;
+        _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+}
+```
+
+> **Optional parameter** (`TimeProvider? timeProvider = null`) keeps existing 2-argument callers compiling without changes.
+
+#### 2. Replace `DateTime.UtcNow`
+
+```csharp
+// Before
+var now = DateTime.UtcNow;
+
+// After
+var now = _timeProvider.GetUtcNow().UtcDateTime;
+```
+
+#### 3. Register in Functions `Program.cs`
+
+```csharp
+builder.Services.AddSingleton(TimeProvider.System);
+```
+
+#### 4. `FakeTimeProvider` in tests (3 lines)
+
+```csharp
+private sealed class FakeTimeProvider : TimeProvider
+{
+    private readonly DateTimeOffset _now;
+    public FakeTimeProvider(DateTimeOffset now) => _now = now;
+    public override DateTimeOffset GetUtcNow() => _now;
+}
+```
+
+Usage in a test:
+
+```csharp
+var clock = new FakeTimeProvider(new DateTimeOffset(2026, 1, 15, 2, 0, 0, TimeSpan.Zero)); // January → Winter
+var function = new SeasonalDiscountFunction(db, NullLogger<SeasonalDiscountFunction>.Instance, clock);
+await function.Run(null!);
+```
+
+### Rules
+
+- **Never use `DateTime.UtcNow` in Azure Functions code** — always go through `_timeProvider.GetUtcNow().UtcDateTime`.
+- **Do NOT create a custom `ITimeProvider` interface** — `System.TimeProvider` is already the abstraction.
+- `TimeProvider` is available from .NET 8+; this project targets .NET 10 so it is always present.
+
+---
+
+**Confidence:** ✅ High — implemented, tested, and all 4 previously-skipped season tests pass.  
+**Last updated:** 2026-05-23T21:00:31.176-03:00 by Cinnamon
+---
+
 ## Gotchas
 
 - **`DbContext` is scoped** — this is fine for queue/timer triggers since each invocation is a new scope.
