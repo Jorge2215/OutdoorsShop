@@ -1,6 +1,6 @@
-import type { AuthResponse, LoginRequest, RegisterRequest, UserProfileDto } from '../types/auth'
+import type { AuthResponse, ChangePasswordRequest, LoginRequest, RegisterRequest, UserProfileDto } from '../types/auth'
 import { splitDisplayName } from '../utils/format'
-import { request, requestWithToken } from './client'
+import { fetchWithAuth, request, requestWithToken } from './client'
 
 interface RawAuthResponse {
   accessToken: string
@@ -71,6 +71,12 @@ export const authApi = {
   async getMe(token?: string) {
     const response = token ? await requestWithToken<RawUserProfile>('/auth/me', token) : await request<RawUserProfile>('/auth/me')
     return mapUserProfile(response)
+  },
+  async changePassword(payload: ChangePasswordRequest) {
+    await fetchWithAuth<void>('/users/change-password', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
   },
 }
 

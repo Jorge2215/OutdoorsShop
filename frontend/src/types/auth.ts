@@ -13,6 +13,12 @@ export interface RegisterRequest {
   confirmPassword: string
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+  confirmNewPassword: string
+}
+
 export interface AuthResponse {
   accessToken: string
   refreshToken?: string
