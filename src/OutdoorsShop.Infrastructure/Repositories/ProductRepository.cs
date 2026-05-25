@@ -14,8 +14,21 @@ public class ProductRepository : Repository<Product>, IProductRepository
             .Include(p => p.Category)
             .FirstOrDefaultAsync(p => p.ProductID == id);
 
+    public async Task<Product?> GetByIdIncludingInactiveAsync(int id)
+        => await _dbSet
+            .IgnoreQueryFilters()
+            .Include(p => p.Category)
+            .FirstOrDefaultAsync(p => p.ProductID == id);
+
     public override async Task<IEnumerable<Product>> GetAllAsync()
         => await _dbSet
+            .Include(p => p.Category)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+    public async Task<IEnumerable<Product>> GetAllIncludingInactiveAsync()
+        => await _dbSet
+            .IgnoreQueryFilters()
             .Include(p => p.Category)
             .OrderBy(p => p.Name)
             .ToListAsync();

@@ -32,13 +32,29 @@ public class ProductsController : ControllerBase
     [HttpGet]
     [AllowAnonymous]
     [ProducesResponseType(typeof(IEnumerable<ProductDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetAll(
         [FromQuery] int? categoryId,
-        [FromQuery] string? search)
+        [FromQuery] string? search,
+        [FromQuery] bool includeInactive = false)
     {
         IEnumerable<Product> products;
 
-        if (!string.IsNullOrWhiteSpace(search))
+        if (includeInactive)
+        {
+            var unauthorized = EnsureAdminCanIncludeInactive();
+            if (unauthorized is not null)
+                return unauthorized;
+
+            products = await _productRepo.GetAllIncludingInactiveAsync();
+
+            if (!string.IsNullOrWhiteSpace(search))
+                products = products.Where(p => p.Name.Contains(search) ||
+                                               (p.Description != null && p.Description.Contains(search)));
+            else if (categoryId.HasValue)
+                products = products.Where(p => p.CategoryID == categoryId.Value);
+        }
+        else if (!string.IsNullOrWhiteSpace(search))
             products = await _productRepo.SearchAsync(search);
         else if (categoryId.HasValue)
             products = await _productRepo.GetByCategoryAsync(categoryId.Value);
@@ -62,10 +78,20 @@ public class ProductsController : ControllerBase
     [HttpGet("{id:int}")]
     [AllowAnonymous]
     [ProducesResponseType(typeof(ProductDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(int id)
+    public async Task<IActionResult> GetById(int id, [FromQuery] bool includeInactive = false)
     {
-        var product = await _productRepo.GetByIdAsync(id);
+        if (includeInactive)
+        {
+            var unauthorized = EnsureAdminCanIncludeInactive();
+            if (unauthorized is not null)
+                return unauthorized;
+        }
+
+        var product = includeInactive
+            ? await _productRepo.GetByIdIncludingInactiveAsync(id)
+            : await _productRepo.GetByIdAsync(id);
         if (product is null)
             return NotFound(new { message = $"Product {id} not found." });
 
@@ -199,6 +225,12 @@ public class ProductsController : ControllerBase
 
         return Ok(new { imageUrl });
     }
+
+    private IActionResult? EnsureAdminCanIncludeInactive()
+        => User.IsInRole("Administrator")
+            ? null
+            : StatusCode(StatusCodes.Status403Forbidden,
+                new { message = "Administrator role is required to include inactive products." });
 
     private static ProductDto ToDto(Product p, int quantityAvailable) => new()
     {
