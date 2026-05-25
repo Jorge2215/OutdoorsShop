@@ -21,17 +21,20 @@ public class AuthController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly ICustomerRepository _customerRepository;
+    private readonly ICustomerService _customerService;
     private readonly JwtSettings _jwtSettings;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         ICustomerRepository customerRepository,
+        ICustomerService customerService,
         IOptions<JwtSettings> jwtSettings)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _customerRepository = customerRepository;
+        _customerService = customerService;
         _jwtSettings = jwtSettings.Value;
     }
 
@@ -146,6 +149,30 @@ public class AuthController : ControllerBase
         });
 
         return NoContent();
+    }
+
+    /// <summary>Changes the authenticated user's password.</summary>
+    /// <remarks>Available to any authenticated Customer or Administrator.</remarks>
+    [HttpPut("/api/v1/users/change-password")]
+    [Authorize]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+    {
+        var userId = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var result = await _customerService.ChangePasswordAsync(userId, dto);
+        if (result.NotFound)
+            return NotFound(new { message = result.ErrorMessage });
+
+        if (!result.Succeeded)
+            return BadRequest(new { message = result.ErrorMessage ?? "Request could not be completed." });
+
+        return Ok(new { message = "Password changed successfully." });
     }
 
     /// <summary>Returns the authenticated user's profile.</summary>

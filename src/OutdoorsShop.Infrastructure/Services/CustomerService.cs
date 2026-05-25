@@ -1,17 +1,22 @@
+using Microsoft.AspNetCore.Identity;
+using OutdoorsShop.Core.DTOs.Auth;
 using OutdoorsShop.Core.DTOs.Common;
 using OutdoorsShop.Core.DTOs.Customers;
 using OutdoorsShop.Core.Entities;
 using OutdoorsShop.Core.Interfaces;
+using OutdoorsShop.Infrastructure.Identity;
 
 namespace OutdoorsShop.Infrastructure.Services;
 
 public class CustomerService : ICustomerService
 {
     private readonly ICustomerRepository _customerRepository;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public CustomerService(ICustomerRepository customerRepository)
+    public CustomerService(ICustomerRepository customerRepository, UserManager<ApplicationUser> userManager)
     {
         _customerRepository = customerRepository;
+        _userManager = userManager;
     }
 
     public async Task<PagedResult<CustomerDto>> GetPagedAsync(int pageNumber, int pageSize)
@@ -60,6 +65,23 @@ public class CustomerService : ICustomerService
         await _customerRepository.SaveChangesAsync();
 
         return OperationResult<CustomerDto>.Success(MapToDto(customer));
+    }
+
+    public async Task<OperationResult> ChangePasswordAsync(string userId, ChangePasswordDto request)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null)
+            return OperationResult.NotFoundResult("Authenticated user was not found.");
+
+        var isCurrentPasswordValid = await _userManager.CheckPasswordAsync(user, request.CurrentPassword);
+        if (!isCurrentPasswordValid)
+            return OperationResult.Invalid("Current password is incorrect.");
+
+        var result = await _userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!result.Succeeded)
+            return OperationResult.Invalid(string.Join(" ", result.Errors.Select(error => error.Description)));
+
+        return OperationResult.Success();
     }
 
     public async Task<OperationResult> SoftDeleteAsync(int id)

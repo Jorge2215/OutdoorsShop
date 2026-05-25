@@ -17,6 +17,7 @@
 
 ## Learnings
 
+- 2026-05-25T19:08:32.516-03:00: ProfilePage now owns two independent forms inside the same card: customer details still save through `customersApi.update(...)`, while password changes call `authApi.changePassword(...)` against `PUT /api/v1/users/change-password` with `{ currentPassword, newPassword, confirmNewPassword }`. Keep password validation inline (required fields, minimum 8 characters, confirmation match), show section-specific alerts, and clear the password fields after a successful change.
 - 2026-05-25T11:05:01.947-03:00: Admin catalog now requests `productsApi.list({ includeInactive: true })` so soft-deleted products stay visible to administrators. Inactive rows use muted styling plus a danger badge, and reactivation is handled through `productsApi.update(..., isActive: true)` while active products keep the soft-delete action.
 
 ### 2026-05-24T16:52:12.609-03:00 — Team update
@@ -33,4 +34,10 @@
 - 2026-05-24T15:02:56Z: Noted by Scribe — frontend SWA migration completed by Toru; confirmed `frontend/.env.production` points to `https://app-outdoors-api-dev.azurewebsites.net` for production builds.
 - 2026-05-24T17:48:06Z: Scribe — Orders endpoint `GET /api/v1/Orders` returns a paginated payload `{items, pageNumber, pageSize, totalCount, totalPages}`; frontend/client code must unwrap `.items` when consuming order lists. Also: role claim is encoded under the full URI `http://schemas.microsoft.com/ws/2008/06/identity/claims/role`; token parsing should accept both the short `role` claim and the full URI key.
 
-\n\n## 2026-05-25T14:05:01Z � Scribe\nMerged malta-admin-inactive-fix.md into decisions.md; frontend updated AdminProductsPage to request includeInactive and show Reactivate action; commit a704695.
+\n\n## 2026-05-25T14:05:01Z � Scribe\nMerged malta-admin-inactive-fix.md into decisions.md; frontend updated AdminProductsPage to request includeInactive and show Reactivate action; commit a704695.
+
+---
+### 2026-05-25T22:39:03Z — Change-password feature
+- Merged inbox decision(s) related to change-password into decisions.md.
+- Noted implementation and UI work by Cinnamon/Malta/Creta in team records.
+

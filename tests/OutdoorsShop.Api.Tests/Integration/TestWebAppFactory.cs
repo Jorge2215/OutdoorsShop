@@ -73,6 +73,10 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
             blobMock.Setup(b => b.UploadProductImageAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
                 .ReturnsAsync("https://test.blob.core.windows.net/product-images/products/1/test.jpg");
             services.AddSingleton(blobMock.Object);
+
+            using var scope = services.BuildServiceProvider().CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.EnsureCreated();
         });
     }
 

@@ -58,6 +58,12 @@ Tasks:
 3. Ensure the Static Web App is connected to the correct resource group and region.
 4. Once the deployment is successful, delete the Storage Account "stoutdoorsdev" to avoid confusion and unnecessary costs.
 
+## Apps Azure URL's 
+App:
+https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net
+
+Api Swagger:
+https://app-outdoors-api-dev.azurewebsites.net/swagger/index.html
 
 ## Resume
 copilot --resume=561f7ff3-e5a1-4fa8-9a38-91908166a3d2
