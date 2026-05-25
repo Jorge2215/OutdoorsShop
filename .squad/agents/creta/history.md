@@ -15,9 +15,48 @@
 
 ## Learnings
 
+### 2026-05-25T11:05:01.947-03:00 — Admin Product Catalog Live Validation
+
+Ran live validation against `https://app-outdoors-api-dev.azurewebsites.net/api/v1` after reviewing the admin catalog implementation (`AdminProductsPage.tsx`, `ProductsController.cs`, `CreateProductDto.cs`, `UpdateProductDto.cs`). Key findings:
+
+- **Auth matrix is correct on live dev.** No token returns 401, Customer JWT returns 403, and Administrator JWT (`admin@outdoorsshop.dev` / `Admin@123456`) reaches the admin product endpoints and image upload successfully.
+- **Happy-path CRUD is mostly green.** Create, read, public list inclusion while active, image upload, update, delete, and public list exclusion after delete all worked on the deployed dev API.
+- **Validation contract matches runtime.** Missing required fields return 400, invalid category returns 404, negative price returns 400, and missing-product update/delete both return 404 with clear messages.
+- **Blocking soft-delete bug found.** After `DELETE /products/{id}` returns 204, `GET /products/{id}` returns 404 instead of exposing an inactive record, so the soft-delete state cannot be verified through the API contract.
+- **Probable root cause in code:** `AppDbContext` applies `HasQueryFilter(p => p.IsActive)`, and `ProductRepository.GetByIdAsync()` / `GetAllAsync()` do not use `IgnoreQueryFilters()`. That means inactive products vanish from normal reads even though `ProductsController.Delete()` only flips `IsActive = false`.
+- **Frontend impact:** `AdminProductsPage` loads data through `productsApi.list()`, which calls the public `/products` endpoint. Deleted products therefore disappear from the admin table too, making reactivation/review impossible despite the UI exposing an `Active` field.
+- **Release call:** treat the soft-delete visibility gap as deploy-blocking for the Admin Products Catalog unless admin-specific read/list behavior for inactive products is added.
+
+### 2026-05-24T19:59:32.340-03:00 — Admin Product Catalog Test Scenario Design
+
+Drafted full test scenario catalogue (`creta-admin-catalog-tests.md`) for the upcoming Admin Product Catalog sprint. Key design decisions and patterns noted:
+
+- **RBAC is always Area 1.** All 10 RBAC scenarios must be green before any other area is considered shippable. Pattern confirmed: no-token → 401, Customer JWT → 403, Admin JWT → 2xx. Fresh tokens required for auth test runs (stale Customer token returns 401 not 403).
+- **60 test scenarios + 4 architectural risk items** across 7 areas: RBAC, CRUD, Categories, Image Upload (incremental), Inventory/Stock, Frontend, and Edge Cases.
+- **4 risk flags escalated to team** before sprint begins: concurrent edits (EC-01), deleting a product in active orders (EC-02), search/filter performance on large catalog (EC-03), token expiry UX during long admin sessions (EC-04). None can be tested until Toru/Cinnamon/Malta make policy decisions.
+- **Image upload core (22/22)** already covered — only 4 incremental catalog-context scenarios added for IMG area.
+- **Prerequisites confirmed already in place:** admin seed user, image upload endpoint. Remaining unknowns: SKU field/uniqueness, max field lengths, soft-delete vs. hard-delete policy, cascade on category delete, pagination scope.
+- **Frontend test strategy:** Vitest + RTL for unit/component (form validation, role-based nav), Playwright for E2E route guards and optimistic UI flows.
+
 ### 2026-05-24T16:52:12.609-03:00 — Team update
 - Cinnamon delivered admin user seed (admin@outdoorsshop.dev / Admin@123456) — Creta can now rerun all blocked image upload tests.
 
+### 2026-05-24 — Image Upload Test Execution (Run 3 — Final)
+
+**Admin credentials confirmed:** `admin@outdoorsshop.dev` / `Admin@123456` — returns JWT with `Administrator` role claim. Blocker from Run 2 resolved.
+
+**All 22 tests: ✅ PASS (0 FAIL, 0 BLOCKED)**
+
+**Key findings:**
+- `Invoke-RestMethod -Form` silently fails for multipart upload on this environment. Use `curl.exe -F` instead for multipart/form-data file upload tests.
+- File validation messages are clear and consistent: `"Invalid file type. Allowed types: jpg, jpeg, png, gif, webp."`, `"File size exceeds the 5 MB limit."`, `"No file uploaded."`
+- Blob naming uses UUID scheme (`products/{productId}/{uuid}.{ext}`) — special chars in original filename are discarded, no injection risk.
+- Old blob cleanup is NOT implemented. On re-upload, the previous blob remains accessible in `product-images`. DB always points to latest URL (correct), but orphaned blobs accumulate. Advisory finding, not blocking.
+- Product existence check returns 404 with `{"message":"Product {id} not found."}` — good API hygiene.
+- Public access confirmed: blobs are accessible anonymously (no SAS needed) — container is `PublicAccessType.Blob` as designed.
+- E-03 test condition: the plan's "OR at minimum new blob exists and DB points to it" minimum condition IS met even without cleanup.
+
+**Verdict: ✅ PASS (22/22)**
 
 ### 2026-05-24 — Image Upload Test Execution (Run 2)
 
@@ -323,3 +362,4 @@ Key learnings:
 - Blank connection string via builder.UseSetting to prevent production AddDatabase from registering providers.
 - SqliteConnection for in-memory must remain open for factory lifetime; call EnsureCreated() and dispose in Dispose(bool).
 - Set JwtBearerOptions.MapInboundClaims = false so 'sub' maps to JwtRegisteredClaimNames.Sub and User.FindFirstValue works in AuthController.Me().
+\n\n## 2026-05-25T14:05:01Z � Scribe\nMerged creta-admin-catalog-verdict.md into decisions.md; re-validation in progress for Admin Products Catalog module.

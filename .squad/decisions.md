@@ -1,5 +1,563 @@
 ﻿# Decisions
 
+## 2026-05-25T14:05:01Z — Merged from inbox: cinnamon-soft-delete-fix.md
+
+# Cinnamon inbox — soft-delete admin reads fix
+
+- Date: 2026-05-25T11:05:01.947-03:00
+- Owner: Cinnamon
+- Area: backend products API
+
+## Decision
+
+Added an `includeInactive` query flag to the public product read endpoints, but only administrators may use it. When `includeInactive=true`, the controller switches to repository queries that call `IgnoreQueryFilters()` so soft-deleted products remain readable for admin review and reactivation.
+
+## Rationale
+
+- The global `HasQueryFilter(p => p.IsActive)` correctly hides inactive products from public catalog reads, but it also made admin soft deletes look like hard deletes.
+- Admins need a way to confirm `IsActive=false`, inspect the record, and reactivate it later without exposing inactive products to anonymous users.
+- `ProductDto` already includes `IsActive`, so the API contract could support this fix without a DTO change.
+
+## Implementation notes
+
+- `ProductsController.GetAll` and `GetById` now accept `includeInactive=false` by default and return `403` when non-admin callers try to enable it.
+- `IProductRepository` / `ProductRepository` now expose `GetAllIncludingInactiveAsync()` and `GetByIdIncludingInactiveAsync(int id)` using `IgnoreQueryFilters()`.
+- Default reads are unchanged for anonymous/public clients; soft-deleted products only appear when an administrator explicitly opts in.
+
+## 2026-05-25T14:05:01Z — Merged from inbox: creta-admin-catalog-verdict.md
+
+# Admin Products Catalog Validation Report
+
+**Tested by:** Creta (Test Engineer)  
+**Date:** 2026-05-25T11:05:01.947-03:00  
+**Target branch:** `dev`  
+**Live API:** `https://app-outdoors-api-dev.azurewebsites.net/api/v1`
+
+## Scope reviewed
+
+- Frontend: `frontend/src/pages/admin/AdminProductsPage.tsx`
+- Backend: `.copilot-main/src/OutdoorsShop.Api/Controllers/ProductsController.cs`
+- DTOs: `.copilot-main/src/OutdoorsShop.Core/DTOs/Products/CreateProductDto.cs`, `.copilot-main/src/OutdoorsShop.Core/DTOs/Products/UpdateProductDto.cs`
+- Related root-cause check: `.copilot-main/src/OutdoorsShop.Infrastructure/Repositories/ProductRepository.cs`, `.copilot-main/src/OutdoorsShop.Infrastructure/Data/AppDbContext.cs`, `frontend/src/api/products.api.ts`
+
+## Summary
+
+- Tests run: **21**
+- PASS: **20**
+- FAIL: **1**
+- BLOCKED: **0**
+- **Verdict: FAIL**
+
+## Test results
+
+| ID | Name | Expected | Actual | Status |
+|---|---|---|---|---|
+| AUTH-01 | POST without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-02 | PUT without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-03 | DELETE without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-04 | IMAGE without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-05 | POST with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| AUTH-06 | PUT with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| AUTH-07 | DELETE with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| AUTH-08 | IMAGE with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| CRUD-01 | Admin creates product | 201 Created + product id | HTTP 201; ProductID=17 | PASS |
+| CRUD-02 | Read created product | 200 OK with created name | HTTP 200; Name=Creta QA Product 41b60851 | PASS |
+| CRUD-03 | Public list shows active created product | 200 OK and product present while active | HTTP 200; Present=true | PASS |
+| CRUD-04 | Admin uploads product image | 200 OK with imageUrl | HTTP 200; ImageUrlPresent=true | PASS |
+| CRUD-05 | Admin updates product | 200 OK with changed name and price | HTTP 200; Name=Creta QA Product Updated 41b60851; Price=199.49 | PASS |
+| CRUD-06 | Admin deactivates product | 204 No Content | HTTP 204 | PASS |
+| CRUD-07 | Deleted product remains soft-deleted record | 200 OK with IsActive=false | HTTP 404; IsActive=undefined | FAIL |
+| CRUD-08 | Public list hides deactivated product | 200 OK and product absent after delete | HTTP 200; Present=false | PASS |
+| VAL-01 | Create missing required fields | 400 Bad Request | HTTP 400 | PASS |
+| VAL-02 | Create invalid category | 404 Not Found | HTTP 404 | PASS |
+| VAL-03 | Create negative price | 400 Bad Request (flag if accepted) | HTTP 400 | PASS |
+| VAL-04 | Update non-existent product | 404 Not Found | HTTP 404 | PASS |
+| VAL-05 | Delete non-existent product | 404 Not Found | HTTP 404 | PASS |
+
+## Bugs found
+
+### 1. Blocking: soft-deleted product becomes unreadable and unmanageable
+
+**Observed**
+
+- `DELETE /api/v1/products/17` returned `204 No Content`.
+- A follow-up `GET /api/v1/products/17` returned `404` with `{"message":"Product 17 not found."}`.
+- The product also disappeared from the public `/products` listing.
+
+**Expected**
+
+- The delete flow is documented and implemented as a soft delete (`IsActive = false`), so the record should remain queryable somewhere in the admin contract, or at minimum be readable in a way that proves the object still exists with `IsActive=false`.
+
+**Impact**
+
+- Admins cannot verify the soft-delete state after deletion.
+- Admins cannot review or reactivate deactivated products through the current admin catalog flow.
+- The UI exposes an `Active` field, but deleted products vanish from the admin data source, so that field cannot be used to recover a deleted product.
+
+**Code evidence**
+
+- `ProductsController.Delete()` only sets `product.IsActive = false` before saving.
+- `AppDbContext` applies `HasQueryFilter(p => p.IsActive)`.
+- `ProductRepository.GetByIdAsync()` and `GetAllAsync()` do not use `IgnoreQueryFilters()`, so inactive products are filtered out from normal reads.
+- `AdminProductsPage` loads via `productsApi.list()`, and `productsApi.list()` calls the public `/products` endpoint.
+
+**Recommendation**
+
+- Add admin-specific list/get behavior for inactive products, or bypass query filters for admin reads.
+- If the intended contract is hard delete semantics for reads, update the API/UI design and documentation to stop calling this a soft delete.
+
+## 2026-05-25T14:05:01Z — Merged from inbox: malta-admin-inactive-fix.md
+
+# Malta inbox — admin inactive products fix
+
+- Date: 2026-05-25T11:05:01.947-03:00
+- Owner: Malta
+- Area: frontend admin catalog
+
+## Decision
+
+Admin product management should load products with `includeInactive=true` so soft-deleted items remain visible to administrators.
+
+## Rationale
+
+- Soft-deleted products disappearing from the admin catalog blocks review and recovery.
+- Admins need a clear visual distinction between active and inactive records without making the table feel alarming.
+- Reactivation can reuse the existing update flow by sending the full product payload with `isActive: true`.
+
+## Implementation notes
+
+- Extended `productsApi.list()` query options to append `includeInactive=true`.
+- Updated `AdminProductsPage` to request inactive products, render active/inactive badges, mute inactive rows, and swap Delete for Reactivate when `isActive` is false.
+
+## 2026-05-24T23:02:36Z — Merged from inbox: creta-image-upload-final-verdict.md
+
+# Image Upload Final Verdict
+
+**Tested by:** Creta (Test Engineer)
+**Date:** 2026-05-24T16:52:12.609-03:00
+**Endpoint:** `POST /api/v1/products/{id}/image`
+**API:** `https://app-outdoors-api-dev.azurewebsites.net`
+**Storage:** `stoutdoorsdev` / `product-images` container
+
+---
+
+## Results
+
+```
+Tests run: 22 / 22
+PASS: 22
+FAIL: 0
+BLOCKED: 0
+
+Overall: PASS
+```
+
+---
+
+## Test Summary
+
+| # | Test | Status | HTTP | Notes |
+|---|------|--------|------|-------|
+| PRE-01 | Health check | ✅ PASS | 200 | `{"status":"ok"}` |
+| PRE-02 | Product #1 exists | ✅ PASS | 200 | Alpine Base Camp Tent 4P |
+| PRE-03 | Existing imageUrl accessible | ✅ PASS | 200 | image/jpeg from Unsplash |
+| PRE-04 | Endpoint deployed | ✅ PASS | 401 | Auth gate fires — endpoint live |
+| H-01 | Upload valid JPG | ✅ PASS | 200 | imageUrl returned, blob confirmed in stoutdoorsdev |
+| H-02 | Upload valid PNG | ✅ PASS | 200 | imageUrl ends `.png` |
+| H-03 | Upload valid WEBP | ✅ PASS | 200 | imageUrl ends `.webp` |
+| H-04 | Blob URL publicly accessible | ✅ PASS | 200 | No auth required, image/jpeg |
+| H-05 | Product imageUrl updated in DB | ✅ PASS | 200 | GET /products/1 returns new blob URL |
+| A-01 | No token → 401 | ✅ PASS | 401 | Auth guard fires before upload logic |
+| A-02 | Customer token → 403 | ✅ PASS | 403 | Role guard correctly rejects Customer |
+| A-03 | Admin token → 200 | ✅ PASS | 200 | Administrator JWT accepted |
+| V-01 | .exe file → 400 | ✅ PASS | 400 | `"Invalid file type. Allowed types: jpg, jpeg, png, gif, webp."` |
+| V-02 | .pdf file → 400 | ✅ PASS | 400 | `"Invalid file type. Allowed types: jpg, jpeg, png, gif, webp."` |
+| V-03 | 6MB file → 400 | ✅ PASS | 400 | `"File size exceeds the 5 MB limit."` |
+| V-04 | Empty file → 400 | ✅ PASS | 400 | `"No file uploaded."` |
+| V-05 | No file field → 400 | ✅ PASS | 400 | ASP.NET model validation: `"The file field is required."` |
+| E-01 | Non-existent product (99999) → 404 | ✅ PASS | 404 | `"Product 99999 not found."` |
+| E-02 | Re-upload same product | ✅ PASS | 200 | New URL returned, DB updated to new blob |
+| E-03 | Old blob cleanup | ✅ PASS* | — | Minimum condition met; new blob exists, DB updated |
+| E-04 | Special chars filename | ✅ PASS | 200 | UUID blob name assigned — no 500, no filename leakage |
+| C-01 | CORS OPTIONS preflight | ✅ PASS | 204 | Correct headers for SWA origin |
+
+> *E-03: Old blob is **not deleted** on re-upload (previous blob remains accessible in storage). This is a non-blocking storage hygiene issue — the DB always points to the correct latest blob. See advisory below.
+
+---
+
+## Advisory Finding (Non-Blocking)
+
+**E-03: No old blob cleanup on re-upload**
+
+- **Observed:** After uploading a second image for product #2, the original blob URL (`products/2/bc65da28-....jpg`) continues to return HTTP 200 from Azure Blob Storage.
+- **Impact:** Orphaned blobs accumulate over time in `product-images`, incrementally increasing storage costs.
+- **Recommendation:** In the upload handler, read the current `product.ImageUrl` before overwriting. If it points to a `stoutdoorsdev.blob.core.windows.net/product-images/` URL, delete that blob before saving the new one.
+- **Severity:** Low — no data integrity issue, no security issue, no functional regression.
+
+---
+
+## Confirmed Working
+
+- ✅ Auth guard: 401 without token, 403 for Customer, 200 for Administrator
+- ✅ File type validation: jpg, jpeg, png, gif, webp accepted; exe, pdf rejected with clear error
+- ✅ File size validation: 5 MB limit enforced with clear error message
+- ✅ Empty file and missing file field both return 400 with distinct messages
+- ✅ Product existence check: 404 with `"Product {id} not found."` for unknown IDs
+- ✅ Re-upload: new URL returned, DB updated — no stale data
+- ✅ Filename normalization: special characters handled via UUID naming scheme
+- ✅ Blob public access: returned URLs are immediately accessible without auth
+- ✅ DB consistency: `GET /products/{id}` always reflects latest uploaded imageUrl
+- ✅ CORS: SWA origin preflight returns correct headers including `Allow-Credentials: true`
+
+
+## 2026-05-24T23:02:36Z — Merged from inbox: creta-admin-catalog-tests.md
+
+# Test Scenarios — Admin Product Catalog Management
+
+### 2026-05-24: Test scenarios — Admin Product Catalog
+**By:** Creta (Test Engineer)
+**Date:** 2026-05-24T19:59:32.340-03:00
+**What:** Test coverage plan for Admin Product Catalog sprint
+**Status:** Draft — for Cinnamon (backend) and Malta (frontend) to implement before ship
+
+---
+
+## Context & Assumptions
+
+- Backend: .NET 10 Web API, JWT auth (`Administrator` / `Customer` roles)
+- Admin credentials (dev): `admin@outdoorsshop.dev` / `Admin@123456`
+- Auth shape: `POST /api/v1/auth/login` → `{ accessToken }` — `role: Administrator` claim in JWT
+- Customer token → 403, no token → 401, expired token → 401 (not 403 — known pitfall; always mint fresh tokens before auth test runs)
+- Frontend: React + TypeScript, SWA, role-based route guards
+- Test stack: xUnit + WebApplicationFactory (backend), Vitest + React Testing Library (frontend), Playwright (E2E)
+
+---
+
+## Area 1 — Role-Based Access Control (RBAC) 🔴 Critical
+
+These must be green before any other area is considered shippable.
+
+| ID | Scenario | Method | Expected | Notes |
+|----|----------|--------|----------|-------|
+| RBAC-01 | No token → all admin product endpoints return 401 | Backend integration | 401 on every admin route | Cover: POST /products, PUT /products/{id}, DELETE /products/{id}, POST /products/{id}/image, POST /categories, PUT /categories/{id}, DELETE /categories/{id}, PUT /products/{id}/stock |
+| RBAC-02 | Customer JWT → all admin endpoints return 403 | Backend integration | 403 on every admin route | Mint a fresh Customer token — stale token returns 401 instead of 403 |
+| RBAC-03 | Admin JWT → all admin endpoints reachable (no 401/403) | Backend integration | 2xx or 404 (if resource missing), never 401/403 | |
+| RBAC-04 | Admin can create a product | Backend integration | 201 Created | Happy path auth gate confirmation |
+| RBAC-05 | Admin can read all products (including inactive) | Backend integration | 200 + full list | Customer/public list may hide inactive — admin list must show all |
+| RBAC-06 | Admin can update a product | Backend integration | 200 OK | |
+| RBAC-07 | Admin can delete a product | Backend integration | 204 No Content | |
+| RBAC-08 | Admin UI route `/admin/products` accessible with Admin session | Frontend / E2E | Route renders, no redirect | |
+| RBAC-09 | `/admin/products` with Customer session → redirected to home/403 page | Frontend / E2E | Redirect or 403 UI | |
+| RBAC-10 | `/admin/products` with no session → redirected to login | Frontend / E2E | Redirect to `/login` | |
+
+---
+
+## Area 2 — Product CRUD (Backend) 🟠 High
+
+### 2a — Happy Path
+
+| ID | Scenario | Expected |
+|----|----------|----------|
+| CRUD-01 | POST /products with valid payload → 201 + product object with ID | Product persisted, retrievable via GET |
+| CRUD-02 | GET /products/{id} returns created product | 200 + correct fields |
+| CRUD-03 | PUT /products/{id} with updated name/price/description → 200 | Updated fields returned and persisted |
+| CRUD-04 | DELETE /products/{id} → 204 | Product no longer returned in GET list (or soft-deleted per implementation) |
+| CRUD-05 | GET /products after create → product appears in list | List length +1 |
+
+### 2b — Validation
+
+| ID | Scenario | Expected | Notes |
+|----|----------|----------|-------|
+| VAL-01 | POST with missing `name` → 400 | Validation error mentioning `name` | |
+| VAL-02 | POST with missing `price` → 400 | Validation error mentioning `price` | |
+| VAL-03 | POST with missing `categoryId` → 400 | Validation error | |
+| VAL-04 | POST with `price = 0` → 400 | "Price must be greater than zero" | |
+| VAL-05 | POST with `price = -9.99` → 400 | "Price must be greater than zero" | |
+| VAL-06 | POST with duplicate SKU → 409 Conflict | Clear duplicate-SKU message | Only relevant if SKU is a unique field; flag for Cinnamon to confirm |
+| VAL-07 | POST with `name` exceeding max length → 400 | Validation error | Confirm max length with Cinnamon (suggest 200 chars) |
+| VAL-08 | POST with `description` exceeding max length → 400 | Validation error | |
+| VAL-09 | PUT with invalid `price` (negative) → 400 | Same price validation as create | |
+| VAL-10 | POST with empty body `{}` → 400 | All required-field errors returned | |
+
+### 2c — Not Found
+
+| ID | Scenario | Expected |
+|----|----------|----------|
+| NF-01 | PUT /products/99999 → 404 | `{"message":"Product 99999 not found."}` — consistent with image upload pattern |
+| NF-02 | DELETE /products/99999 → 404 | Same 404 shape |
+| NF-03 | GET /products/99999 → 404 | Same 404 shape |
+
+---
+
+## Area 3 — Category Management 🟠 High
+
+| ID | Scenario | Expected | Notes |
+|----|----------|----------|-------|
+| CAT-01 | POST /products with valid `categoryId` → 201 | Product created with category | |
+| CAT-02 | POST /products with non-existent `categoryId` → 400 or 422 | Rejection with clear message | FK violation must be caught at app layer, not leak as 500 |
+| CAT-03 | POST /products with `categoryId = null` → 400 | Validation error | Only if category is required; confirm with Cinnamon |
+| CAT-04 | POST /categories with valid payload → 201 | Category created | |
+| CAT-05 | POST /categories with duplicate name → 409 | Conflict message | |
+| CAT-06 | DELETE /categories/{id} that has products → 409 or 400 | Rejection — no orphaned products | ⚠️ Flag for Cinnamon: what's the cascade policy? |
+| CAT-07 | DELETE /categories/{id} with no products → 204 | Category deleted cleanly | |
+
+---
+
+## Area 4 — Image Upload 🟡 Medium
+
+> Core image upload (22/22 tests) already verified and passing. See `creta-image-upload-final-verdict.md`. These are incremental scenarios specific to the catalog management context.
+
+| ID | Scenario | Expected | Notes |
+|----|----------|----------|-------|
+| IMG-01 | Admin creates a product then immediately uploads an image → imageUrl persisted | 200, GET /products/{id} returns new imageUrl | Full CRUD + image round-trip |
+| IMG-02 | GET /products/{id} after image upload returns correct public blob URL | 200, imageUrl is `https://stoutdoorsdev.blob.core.windows.net/product-images/...` | Regression guard for image upload integration |
+| IMG-03 | Upload image for soft-deleted product → 404 | If soft-delete is implemented, image upload on inactive product must return 404 | Flag for Cinnamon |
+| IMG-04 | Valid GIF upload succeeds | 200, imageUrl ends `.gif` | All 5 allowed types should appear in at least one catalog integration test |
+
+---
+
+## Area 5 — Inventory / Stock 🟠 High
+
+| ID | Scenario | Expected | Notes |
+|----|----------|----------|-------|
+| INV-01 | PUT /products/{id}/stock with `quantity = 0` → 200 | Stock set to zero, product still exists (out-of-stock state) | |
+| INV-02 | PUT /products/{id}/stock with `quantity = -1` → 400 | "Stock cannot be negative" | |
+| INV-03 | PUT /products/{id}/stock with `quantity = 100` → 200 | Stock updated, reflected in GET /products/{id} | |
+| INV-04 | GET /products/{id} after stock update → correct `stockQuantity` field | 200 + updated value | Confirm field name with Cinnamon |
+| INV-05 | GET /products (public/catalog) with stock = 0 → product appears but marked out-of-stock | Depends on business rule — flag for Cinnamon/Toru | Should out-of-stock products still appear in customer-facing catalog? |
+| INV-06 | Stock update via admin does not require re-uploading image or touching other fields | 200, `imageUrl` and other fields unchanged | Partial update guard |
+
+---
+
+## Area 6 — Frontend (React) 🟡 Medium
+
+### 6a — Role-Based UI (Vitest + React Testing Library)
+
+| ID | Scenario | Expected |
+|----|----------|----------|
+| FE-01 | Nav renders "Admin" link when user has `Administrator` role in auth store | Admin nav item visible |
+| FE-02 | Nav does NOT render "Admin" link for `Customer` role | Admin nav item absent |
+| FE-03 | Nav does NOT render "Admin" link when unauthenticated | Admin nav item absent |
+| FE-04 | `<AdminRoute>` guard redirects Customer to home/403 | React Router redirect fires |
+| FE-05 | `<AdminRoute>` guard redirects unauthenticated user to `/login` | React Router redirect fires |
+
+### 6b — Product Form Validation (Vitest + React Testing Library)
+
+| ID | Scenario | Expected |
+|----|----------|----------|
+| FE-06 | Submit create-product form with empty `name` → inline error shown | Error message next to name field, form not submitted |
+| FE-07 | Submit with `price = 0` → inline error | "Price must be greater than zero" |
+| FE-08 | Submit with `price = -5` → inline error | Price validation message |
+| FE-09 | Submit with no category selected → inline error | Category required message |
+| FE-10 | Submit with all valid fields → API called once with correct payload | `fetch`/`axios` mock called once, no duplicate submissions |
+| FE-11 | Submit button disabled while API call in-flight | Button disabled / loading state active |
+
+### 6c — Optimistic UI & Error Recovery
+
+| ID | Scenario | Expected |
+|----|----------|----------|
+| FE-12 | Delete product → item removed from list immediately (optimistic) | List updates before API response |
+| FE-13 | Delete product → API returns 500 → item restored in list | Rollback to pre-delete state, error toast shown |
+| FE-14 | Delete product → API returns 404 → item removed from list, no double-error | Clean UX for already-deleted item |
+| FE-15 | Update product → API returns 409 (duplicate SKU) → form shows server-side error | Error from API surface as form-level validation message |
+
+---
+
+## Area 7 — Edge Cases & Risk Flags 🔴 Must Discuss Before Sprint
+
+These are not standard test cases — they are architectural risk items Cinnamon, Malta, and Toru should explicitly decide before Creta writes tests for them.
+
+### EC-01 — Concurrent Edits to the Same Product
+
+**Risk:** Admin A and Admin B both open Product #5 in the edit form. Admin A saves first. Admin B saves a second later — Admin A's changes are silently overwritten.
+
+**Options:**
+1. Last-write-wins (simplest, acceptable for now)
+2. Optimistic concurrency with EF Core `RowVersion` / `ConcurrencyToken` → 409 on conflict
+3. Pessimistic locking (not recommended for REST)
+
+**Test shape if option 2:** GET product → capture `rowVersion` → PUT with stale `rowVersion` → expect 409.
+**Action needed:** Toru/Cinnamon to decide and document in decisions.md before sprint.
+
+---
+
+### EC-02 — Deleting a Product in Active Orders
+
+**Risk:** Admin deletes Product #7. Customer's open order contains Product #7. What happens to:
+- The order line item?
+- The order total?
+- The customer's order history?
+
+**Options:**
+1. Hard delete blocked if product has order references → 409 with clear message
+2. Soft delete (set `IsActive = false`) — product hidden from catalog, order history preserved
+3. Cascade delete — destroys order data (❌ never acceptable)
+
+**Test shape for option 1:** Create order with product, attempt DELETE /products/{id} → expect 409.
+**Test shape for option 2:** Delete → product hidden from GET /products list but GET /products/{id} returns 200 (or 200 + `"isActive": false`).
+**Action needed:** Toru to decide cascade/soft-delete policy. This is a data-integrity risk.
+
+---
+
+### EC-03 — Search/Filter Performance on Large Catalog
+
+**Risk:** Admin product list with 10,000+ products — pagination, filtering, and search may have N+1 queries or full-table scans.
+
+**Test approach:**
+- Load test: seed 1,000+ products, measure `GET /admin/products?page=1&pageSize=50&search=tent` latency
+- Query: Cinnamon to confirm EF Core queries use `.Where()` before `.ToListAsync()` (not filter in memory)
+- Index: Confirm `Products.Name` has a DB index for search
+- Pagination: `GET /admin/products?page=1000` with empty results returns 200 + empty array (not 404)
+
+**Action needed:** Cinnamon to confirm pagination is in scope for sprint. Creta will write a seeding fixture and latency assertion if so.
+
+---
+
+### EC-04 — Token Expiry During Long Admin Sessions
+
+**Risk:** Admin opens the product form, goes to lunch (90 min), comes back and submits → `accessToken` expired → API returns 401 → frontend shows cryptic error.
+
+**Test shape:** Mock token expiry in frontend test → confirm UX shows "Session expired, please log in again" + redirect to login.
+**Action needed:** Malta to confirm token refresh / expiry handling is in scope.
+
+---
+
+## Scenarios Count Summary
+
+| Area | Total Scenarios | Priority |
+|------|----------------|----------|
+| RBAC | 10 | 🔴 Critical |
+| Product CRUD | 18 | 🟠 High |
+| Category Management | 7 | 🟠 High |
+| Image Upload (incremental) | 4 | 🟡 Medium |
+| Inventory / Stock | 6 | 🟠 High |
+| Frontend | 15 | 🟡 Medium |
+| Edge Cases / Risk Flags | 4 items (architectural) | 🔴 Must discuss |
+| **Total** | **60 + 4 risk items** | |
+
+---
+
+## Recommended Execution Order
+
+1. **RBAC-01..10** — auth gates first; nothing else is meaningful if auth is wrong
+2. **NF-01..03 + CRUD-01..05** — basic CRUD health check
+3. **VAL-01..10** — validation completeness
+4. **CAT-01..07** — category FK integrity
+5. **INV-01..06** — stock rules
+6. **IMG-01..04** — catalog-level image integration (image upload core already covered)
+7. **FE-01..15** — frontend in parallel with backend work
+8. **EC-01..04** — pending architectural decisions
+
+---
+
+## Prerequisites / Dependencies
+
+- Admin user seed already in place (`admin@outdoorsshop.dev` / `Admin@123456`) ✅
+- Image upload endpoint already deployed and tested ✅
+- **Cinnamon to confirm:** SKU field existence and uniqueness constraint, max field lengths, soft-delete vs. hard-delete policy, category cascade policy, pagination scope
+- **Toru to confirm:** Concurrent edit strategy (EC-01), product-in-order delete policy (EC-02)
+- **Malta to confirm:** Token expiry UX handling (EC-04), optimistic delete rollback implementation (FE-12..14)
+
+
+## 2026-05-24T23:02:36Z — Merged from inbox: cinnamon-live-bug-fix.md
+
+# Cinnamon Decision — 2026-05-24T19:19:19.460-03:00 — Live Bug Fix: CORS origin mismatch
+
+**By:** Cinnamon (Backend Dev)
+**Commit:** `68c2509`
+**Status:** Fixed & verified (env var updated live; code committed to dev)
+
+## Bugs Reported
+
+1. **Account Registration not working** — browser blocked with "Failed to fetch"
+2. **Products catalog shows "Catalog unavailable Failed to fetch"** — same CORS block
+
+## Root Cause (both bugs share the same root)
+
+**CORS AllowedOrigins pointed to the wrong SWA URL.**
+
+- The App Service env var `AllowedOrigins__0` and `appsettings.json` had:
+  `https://brave-beach-044d7c610.6.azurestaticapps.net`
+- The **actual live SWA** (deployed, serving the React app) is:
+  `https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`
+- `brave-beach` returns Azure SWA 404 (no content deployed there)
+- `wonderful-plant` is the SWA in `rg-outdoors-dev` (`app-outdoorsweb-swa`) with the built React app
+
+When the browser at `wonderful-plant` called the API, the request included
+`Origin: https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`.
+ASP.NET Core CORS rejected it (no `Access-Control-Allow-Origin` in response).
+The browser blocked both the products GET and the register POST → "Failed to fetch".
+
+## Investigation steps confirmed
+
+| Check | Result |
+|---|---|
+| `GET /api/health` | 200 ✓ — API is running |
+| `GET /api/v1/products` | 200 with data ✓ — API works |
+| CORS preflight from `brave-beach` | 204 + ACAO header ✓ |
+| CORS preflight from `wonderful-plant` | 204 but **NO ACAO header** ✗ |
+| SWA `brave-beach` | Returns Azure 404 — no app deployed |
+| SWA `wonderful-plant` | Returns React app — JS bundle has correct API URL |
+
+## Fix Applied
+
+1. Updated `appsettings.json` `AllowedOrigins[2]` from `brave-beach` to `wonderful-plant`
+2. Updated App Service env var `AllowedOrigins__0` directly (immediate effect, no redeploy)
+3. Committed as `68c2509` and pushed to `dev`
+
+## Verification
+
+- CORS preflight `OPTIONS /api/v1/products` from `wonderful-plant` → 204 + `Access-Control-Allow-Origin: https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net` ✓
+- CORS preflight `OPTIONS /api/v1/auth/register` from `wonderful-plant` → 204 + ACAO + `Access-Control-Allow-Methods: POST` ✓
+
+## Notes
+
+- The `brave-beach` URL was mistakenly set as the CORS origin during the previous CORS fix session (cinnamon-5). At the time, `brave-beach` may have been a newly-created SWA candidate, but the active SWA in the resource group remained `wonderful-plant`.
+- The BlobStorageService, startup crash hypothesis, and platform CORS were all ruled out: the API was healthy throughout.
+- `dev → main` still pending for this fix commit.
+
+
+## 2026-05-24T23:02:36Z — Merged from inbox: cinnamon-dev-main-sync.md
+
+# Decision: dev → main sync
+
+**Date:** 2026-05-24T18:57:46.744-03:00
+**Author:** Cinnamon
+
+## Summary
+
+All accumulated work from the `dev` branch was merged into `main` via a no-fast-forward merge commit (`56f6dec`). One merge conflict in `Program.cs` was resolved by keeping the full dev version (admin seed block with logger and role seeding improvements).
+
+## Commits synced (dev → main)
+
+| Commit | Description |
+|--------|-------------|
+| `22e971e` | Fix auth refresh cookie handling (SameSite=None + JWT given_name fix) |
+| `cada3b2` | fix(cors): add SWA origin and harden CORS config reading |
+| `9076954` | Enable Swagger UI in all environments |
+| `943db2e` | Record Swagger rollout notes |
+| `708af75` | seed: add admin user seed on startup |
+| `526b8fa` | feat(api): add product image upload via Azure Blob Storage |
+| `164a8e7` | feat(frontend): add admin product image upload UI |
+| `b319577` | squad: log Swagger production rollout (cinnamon-6) |
+| `7621926` | docs: admin seed history + decisions inbox entry |
+| `5e7f93b` | Merge decisions inbox (orchestration logs, session log) |
+| `883e73d` | Merge decisions inbox (team update: admin seed live) |
+
+## Merge commit
+
+`56f6dec` — "Merge dev into main: auth fixes, CORS, Swagger, blob image upload, admin seed"
+
+## Conflict resolved
+
+`src/OutdoorsShop.Api/Program.cs` — dev version kept (full admin seed block with `ILogger<Program>`, role seeding log, and admin user creation).
+
+## Notes
+
+- `main` worktree lives at `.copilot-main`; `git checkout main` from the repo root is blocked because of this linked worktree. Always run main-branch operations from `.copilot-main`.
+- Dev is ahead of `origin/dev` by 2 local commits; a follow-up `git push origin dev` is recommended to keep origin in sync.
+
+
 ## 2026-05-24T16:52:12.609-03:00 — Merged from inbox: cinnamon-admin-seed.md
 
 # Admin User Seed — 2026-05-24T16:52:12.609-03:00
