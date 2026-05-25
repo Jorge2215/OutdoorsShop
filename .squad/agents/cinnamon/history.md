@@ -110,3 +110,10 @@
 - - **Migration file location:** `src/OutdoorsShop.Infrastructure/Data/Migrations/20260523162304_InitialCreate.cs`
 
 \n\n## 2026-05-25T14:05:01Z — Scribe\nMerged cinnamon-soft-delete-fix.md into decisions.md; backend add: includeInactive flag and IgnoreQueryFilters for admin reads; commit c034239.
+
+### 2026-05-25T19:08:32.516-03:00 — Change password endpoint
+
+- Added `ChangePasswordDto` and wired `PUT /api/v1/users/change-password` through `ICustomerService`/`CustomerService` so authenticated users can change their own password without bypassing the existing service layer.
+- Password changes use ASP.NET Core Identity built-ins: `CheckPasswordAsync` for the current password check and `ChangePasswordAsync` for validation, hashing, and persistence.
+- Swagger now includes XML comments from the API assembly, so the new password endpoint summary/remarks show up in generated docs.
+- Validation and regression check passed with `dotnet build .\\src\\OutdoorsShop.Api\\OutdoorsShop.Api.csproj` and `dotnet test .\\OutdoorsShop.slnx`.

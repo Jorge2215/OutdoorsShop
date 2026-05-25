@@ -1,3 +1,4 @@
+using OutdoorsShop.Core.DTOs.Auth;
 using OutdoorsShop.Core.DTOs.Common;
 using OutdoorsShop.Core.DTOs.Customers;
 
@@ -8,5 +9,6 @@ public interface ICustomerService
     Task<PagedResult<CustomerDto>> GetPagedAsync(int pageNumber, int pageSize);
     Task<OperationResult<CustomerDto>> GetByIdAsync(int id, bool isAdministrator, int? currentCustomerId);
     Task<OperationResult<CustomerDto>> UpdateAsync(int id, UpdateCustomerDto request, bool isAdministrator, int? currentCustomerId);
+    Task<OperationResult> ChangePasswordAsync(string userId, ChangePasswordDto request);
     Task<OperationResult> SoftDeleteAsync(int id);
 }

@@ -9,6 +9,7 @@ using OutdoorsShop.Infrastructure.Data;
 using OutdoorsShop.Infrastructure.Identity;
 using OutdoorsShop.Infrastructure.Repositories;
 using OutdoorsShop.Infrastructure.Services;
+using System.Reflection;
 using System.Text;
 
 namespace OutdoorsShop.Api.Extensions;
@@ -122,6 +123,11 @@ public static class ServiceCollectionExtensions
                 Version = "v1",
                 Description = "Backend API for the Outdoors Shop e-commerce platform."
             });
+
+            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+                options.IncludeXmlComments(xmlPath);
         });
 
         return services;
