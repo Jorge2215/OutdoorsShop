@@ -36,13 +36,16 @@ function mapProduct(product: RawProduct): Product {
   }
 }
 
-function buildQuery(params?: { categoryId?: number; search?: string }) {
+function buildQuery(params?: { categoryId?: number; search?: string; includeInactive?: boolean }) {
   const query = new URLSearchParams()
   if (params?.categoryId) {
     query.set('categoryId', String(params.categoryId))
   }
   if (params?.search) {
     query.set('search', params.search)
+  }
+  if (params?.includeInactive) {
+    query.set('includeInactive', 'true')
   }
   const value = query.toString()
   return value ? `?${value}` : ''
@@ -60,7 +63,7 @@ function mapPayload(product: ProductUpsertRequest) {
 }
 
 export const productsApi = {
-  async list(params?: { categoryId?: number; search?: string }) {
+  async list(params?: { categoryId?: number; search?: string; includeInactive?: boolean }) {
     const response = await request<RawProduct[]>(`/products${buildQuery(params)}`)
     return response.map(mapProduct)
   },

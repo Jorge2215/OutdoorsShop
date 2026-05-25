@@ -1,8 +1,9 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { categoriesApi } from '../../api/categories.api'
 import { productsApi } from '../../api/products.api'
 import { Alert } from '../../components/ui/Alert'
+import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { Input, Textarea } from '../../components/ui/Input'
@@ -25,7 +26,7 @@ const emptyForm: ProductUpsertRequest = {
 export default function AdminProductsPage() {
   const { data, loading, error, reload } = useAsyncData(
     async () => {
-      const [categories, products] = await Promise.all([categoriesApi.list(), productsApi.list()])
+      const [categories, products] = await Promise.all([categoriesApi.list(), productsApi.list({ includeInactive: true })])
       return { categories, products }
     },
     [],
@@ -84,11 +85,31 @@ export default function AdminProductsPage() {
       return
     }
 
+    setActionError(null)
+
     try {
       await productsApi.remove(product.id)
       reload()
     } catch (caughtError) {
       setActionError(caughtError instanceof Error ? caughtError.message : 'Unable to delete the product.')
+    }
+  }
+
+  const handleReactivate = async (product: Product) => {
+    setActionError(null)
+
+    try {
+      await productsApi.update(product.id, {
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        imageUrl: product.imageUrl ?? '',
+        categoryId: product.categoryId,
+        isActive: true,
+      })
+      reload()
+    } catch (caughtError) {
+      setActionError(caughtError instanceof Error ? caughtError.message : 'Unable to reactivate the product.')
     }
   }
 
@@ -122,16 +143,25 @@ export default function AdminProductsPage() {
               </thead>
               <tbody>
                 {data?.products.map((product) => (
-                  <tr key={product.id} className="border-t border-gold/20 bg-white/75">
+                  <tr
+                    key={product.id}
+                    className={product.isActive ? 'border-t border-gold/20 bg-white/75' : 'border-t border-gold/20 bg-crimson/5 text-ink/60'}
+                  >
                     <td className="px-6 py-4 font-semibold text-ink">{product.name}</td>
                     <td className="px-6 py-4">{product.category.name}</td>
                     <td className="px-6 py-4">{formatCurrency(product.price)}</td>
                     <td className="px-6 py-4">{product.quantityAvailable}</td>
-                    <td className="px-6 py-4">{product.isActive ? 'Yes' : 'No'}</td>
+                    <td className="px-6 py-4">
+                      <Badge tone={product.isActive ? 'success' : 'danger'}>{product.isActive ? 'Active' : 'Inactive'}</Badge>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-2">
                         <Button variant="secondary" size="sm" onClick={() => openEdit(product)}><Pencil className="mr-2 h-4 w-4" /> Edit</Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(product)}><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
+                        {product.isActive ? (
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(product)}><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
+                        ) : (
+                          <Button variant="secondary" size="sm" onClick={() => handleReactivate(product)}><RotateCcw className="mr-2 h-4 w-4" /> Reactivate</Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -169,7 +199,7 @@ export default function AdminProductsPage() {
               />
             </div>
           )}
-          {actionError ? <div className="md:col-span-2"><Alert tone="error" title="Save failed" message={actionError} /></div> : null}
+          {actionError ? <div className="md:col-span-2"><Alert tone="error" title="Action failed" message={actionError} /></div> : null}
           <div className="flex justify-end gap-3 md:col-span-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button type="submit" loading={saving}>{editing ? 'Save changes' : 'Create product'}</Button>
