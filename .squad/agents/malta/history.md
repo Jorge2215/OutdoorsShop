@@ -17,6 +17,8 @@
 
 ## Learnings
 
+- 2026-05-25T11:05:01.947-03:00: Admin catalog now requests `productsApi.list({ includeInactive: true })` so soft-deleted products stay visible to administrators. Inactive rows use muted styling plus a danger badge, and reactivation is handled through `productsApi.update(..., isActive: true)` while active products keep the soft-delete action.
+
 ### 2026-05-24T16:52:12.609-03:00 — Team update
 - Cinnamon delivered admin user seed (admin@outdoorsshop.dev / Admin@123456) — admin login now unblocks all image upload tests for Creta.
 
@@ -31,3 +33,4 @@
 - 2026-05-24T15:02:56Z: Noted by Scribe — frontend SWA migration completed by Toru; confirmed `frontend/.env.production` points to `https://app-outdoors-api-dev.azurewebsites.net` for production builds.
 - 2026-05-24T17:48:06Z: Scribe — Orders endpoint `GET /api/v1/Orders` returns a paginated payload `{items, pageNumber, pageSize, totalCount, totalPages}`; frontend/client code must unwrap `.items` when consuming order lists. Also: role claim is encoded under the full URI `http://schemas.microsoft.com/ws/2008/06/identity/claims/role`; token parsing should accept both the short `role` claim and the full URI key.
 
+\n\n## 2026-05-25T14:05:01Z � Scribe\nMerged malta-admin-inactive-fix.md into decisions.md; frontend updated AdminProductsPage to request includeInactive and show Reactivate action; commit a704695.

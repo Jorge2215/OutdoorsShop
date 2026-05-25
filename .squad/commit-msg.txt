@@ -1,0 +1,9 @@
+Scribe: merge decisions inbox and update logs/histories
+
+- Merged 3 inbox decisions into .squad/decisions.md
+- Removed processed inbox files
+- Created orchestration logs (.squad/orchestration-log/) and session log (.squad/log/)
+- Appended history notes for creta, cinnamon, malta
+- Added creta history summary
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

@@ -22,6 +22,11 @@
 - 
 - ## Learnings
 
+### 2026-05-25T11:05:01.947-03:00 — Admin reads can opt into soft-deleted products
+
+- `ProductsController` public reads stay filtered by the global `Product.IsActive` query filter by default, but admin callers can now pass `includeInactive=true` on `GET /api/v1/products` and `GET /api/v1/products/{id}`.
+- The bypass lives in `IProductRepository`/`ProductRepository` via `GetAllIncludingInactiveAsync` and `GetByIdIncludingInactiveAsync`, both using `IgnoreQueryFilters()` so soft-deleted products remain reviewable/reactivatable without exposing them to anonymous users.
+- `ProductDto` already surfaced `IsActive`; the controller mapping was already correct, so admin reads now return `isActive=false` for soft-deleted products instead of a misleading 404.
 ### 2026-05-24T19:41:04.973-03:00 — Selective dev commit + dev → main merge
 
 - Selective source commit on `dev`: `56aaffc` — committed only real source/config files (`.copilot-main`, workflow files, infra files, `BasePrompt.md`, `frontend/public/staticwebapp.config.json`, `src/OutdoorsShop.Functions/Functions/HealthFunction.cs`) and left build artifacts/untracked packages out.
@@ -104,3 +109,4 @@
 - 
 - - **Migration file location:** `src/OutdoorsShop.Infrastructure/Data/Migrations/20260523162304_InitialCreate.cs`
 
+\n\n## 2026-05-25T14:05:01Z — Scribe\nMerged cinnamon-soft-delete-fix.md into decisions.md; backend add: includeInactive flag and IgnoreQueryFilters for admin reads; commit c034239.

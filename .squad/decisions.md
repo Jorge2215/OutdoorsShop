@@ -1,5 +1,134 @@
 ﻿# Decisions
 
+## 2026-05-25T14:05:01Z — Merged from inbox: cinnamon-soft-delete-fix.md
+
+# Cinnamon inbox — soft-delete admin reads fix
+
+- Date: 2026-05-25T11:05:01.947-03:00
+- Owner: Cinnamon
+- Area: backend products API
+
+## Decision
+
+Added an `includeInactive` query flag to the public product read endpoints, but only administrators may use it. When `includeInactive=true`, the controller switches to repository queries that call `IgnoreQueryFilters()` so soft-deleted products remain readable for admin review and reactivation.
+
+## Rationale
+
+- The global `HasQueryFilter(p => p.IsActive)` correctly hides inactive products from public catalog reads, but it also made admin soft deletes look like hard deletes.
+- Admins need a way to confirm `IsActive=false`, inspect the record, and reactivate it later without exposing inactive products to anonymous users.
+- `ProductDto` already includes `IsActive`, so the API contract could support this fix without a DTO change.
+
+## Implementation notes
+
+- `ProductsController.GetAll` and `GetById` now accept `includeInactive=false` by default and return `403` when non-admin callers try to enable it.
+- `IProductRepository` / `ProductRepository` now expose `GetAllIncludingInactiveAsync()` and `GetByIdIncludingInactiveAsync(int id)` using `IgnoreQueryFilters()`.
+- Default reads are unchanged for anonymous/public clients; soft-deleted products only appear when an administrator explicitly opts in.
+
+## 2026-05-25T14:05:01Z — Merged from inbox: creta-admin-catalog-verdict.md
+
+# Admin Products Catalog Validation Report
+
+**Tested by:** Creta (Test Engineer)  
+**Date:** 2026-05-25T11:05:01.947-03:00  
+**Target branch:** `dev`  
+**Live API:** `https://app-outdoors-api-dev.azurewebsites.net/api/v1`
+
+## Scope reviewed
+
+- Frontend: `frontend/src/pages/admin/AdminProductsPage.tsx`
+- Backend: `.copilot-main/src/OutdoorsShop.Api/Controllers/ProductsController.cs`
+- DTOs: `.copilot-main/src/OutdoorsShop.Core/DTOs/Products/CreateProductDto.cs`, `.copilot-main/src/OutdoorsShop.Core/DTOs/Products/UpdateProductDto.cs`
+- Related root-cause check: `.copilot-main/src/OutdoorsShop.Infrastructure/Repositories/ProductRepository.cs`, `.copilot-main/src/OutdoorsShop.Infrastructure/Data/AppDbContext.cs`, `frontend/src/api/products.api.ts`
+
+## Summary
+
+- Tests run: **21**
+- PASS: **20**
+- FAIL: **1**
+- BLOCKED: **0**
+- **Verdict: FAIL**
+
+## Test results
+
+| ID | Name | Expected | Actual | Status |
+|---|---|---|---|---|
+| AUTH-01 | POST without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-02 | PUT without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-03 | DELETE without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-04 | IMAGE without token | 401 Unauthorized | HTTP 401 | PASS |
+| AUTH-05 | POST with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| AUTH-06 | PUT with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| AUTH-07 | DELETE with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| AUTH-08 | IMAGE with Customer token | 403 Forbidden | HTTP 403 | PASS |
+| CRUD-01 | Admin creates product | 201 Created + product id | HTTP 201; ProductID=17 | PASS |
+| CRUD-02 | Read created product | 200 OK with created name | HTTP 200; Name=Creta QA Product 41b60851 | PASS |
+| CRUD-03 | Public list shows active created product | 200 OK and product present while active | HTTP 200; Present=true | PASS |
+| CRUD-04 | Admin uploads product image | 200 OK with imageUrl | HTTP 200; ImageUrlPresent=true | PASS |
+| CRUD-05 | Admin updates product | 200 OK with changed name and price | HTTP 200; Name=Creta QA Product Updated 41b60851; Price=199.49 | PASS |
+| CRUD-06 | Admin deactivates product | 204 No Content | HTTP 204 | PASS |
+| CRUD-07 | Deleted product remains soft-deleted record | 200 OK with IsActive=false | HTTP 404; IsActive=undefined | FAIL |
+| CRUD-08 | Public list hides deactivated product | 200 OK and product absent after delete | HTTP 200; Present=false | PASS |
+| VAL-01 | Create missing required fields | 400 Bad Request | HTTP 400 | PASS |
+| VAL-02 | Create invalid category | 404 Not Found | HTTP 404 | PASS |
+| VAL-03 | Create negative price | 400 Bad Request (flag if accepted) | HTTP 400 | PASS |
+| VAL-04 | Update non-existent product | 404 Not Found | HTTP 404 | PASS |
+| VAL-05 | Delete non-existent product | 404 Not Found | HTTP 404 | PASS |
+
+## Bugs found
+
+### 1. Blocking: soft-deleted product becomes unreadable and unmanageable
+
+**Observed**
+
+- `DELETE /api/v1/products/17` returned `204 No Content`.
+- A follow-up `GET /api/v1/products/17` returned `404` with `{"message":"Product 17 not found."}`.
+- The product also disappeared from the public `/products` listing.
+
+**Expected**
+
+- The delete flow is documented and implemented as a soft delete (`IsActive = false`), so the record should remain queryable somewhere in the admin contract, or at minimum be readable in a way that proves the object still exists with `IsActive=false`.
+
+**Impact**
+
+- Admins cannot verify the soft-delete state after deletion.
+- Admins cannot review or reactivate deactivated products through the current admin catalog flow.
+- The UI exposes an `Active` field, but deleted products vanish from the admin data source, so that field cannot be used to recover a deleted product.
+
+**Code evidence**
+
+- `ProductsController.Delete()` only sets `product.IsActive = false` before saving.
+- `AppDbContext` applies `HasQueryFilter(p => p.IsActive)`.
+- `ProductRepository.GetByIdAsync()` and `GetAllAsync()` do not use `IgnoreQueryFilters()`, so inactive products are filtered out from normal reads.
+- `AdminProductsPage` loads via `productsApi.list()`, and `productsApi.list()` calls the public `/products` endpoint.
+
+**Recommendation**
+
+- Add admin-specific list/get behavior for inactive products, or bypass query filters for admin reads.
+- If the intended contract is hard delete semantics for reads, update the API/UI design and documentation to stop calling this a soft delete.
+
+## 2026-05-25T14:05:01Z — Merged from inbox: malta-admin-inactive-fix.md
+
+# Malta inbox — admin inactive products fix
+
+- Date: 2026-05-25T11:05:01.947-03:00
+- Owner: Malta
+- Area: frontend admin catalog
+
+## Decision
+
+Admin product management should load products with `includeInactive=true` so soft-deleted items remain visible to administrators.
+
+## Rationale
+
+- Soft-deleted products disappearing from the admin catalog blocks review and recovery.
+- Admins need a clear visual distinction between active and inactive records without making the table feel alarming.
+- Reactivation can reuse the existing update flow by sending the full product payload with `isActive: true`.
+
+## Implementation notes
+
+- Extended `productsApi.list()` query options to append `includeInactive=true`.
+- Updated `AdminProductsPage` to request inactive products, render active/inactive badges, mute inactive rows, and swap Delete for Reactivate when `isActive` is false.
+
 ## 2026-05-24T23:02:36Z — Merged from inbox: creta-image-upload-final-verdict.md
 
 # Image Upload Final Verdict
