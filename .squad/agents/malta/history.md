@@ -35,3 +35,9 @@
 - 2026-05-24T17:48:06Z: Scribe — Orders endpoint `GET /api/v1/Orders` returns a paginated payload `{items, pageNumber, pageSize, totalCount, totalPages}`; frontend/client code must unwrap `.items` when consuming order lists. Also: role claim is encoded under the full URI `http://schemas.microsoft.com/ws/2008/06/identity/claims/role`; token parsing should accept both the short `role` claim and the full URI key.
 
 \n\n## 2026-05-25T14:05:01Z � Scribe\nMerged malta-admin-inactive-fix.md into decisions.md; frontend updated AdminProductsPage to request includeInactive and show Reactivate action; commit a704695.
+
+---
+### 2026-05-25T22:39:03Z — Change-password feature
+- Merged inbox decision(s) related to change-password into decisions.md.
+- Noted implementation and UI work by Cinnamon/Malta/Creta in team records.
+

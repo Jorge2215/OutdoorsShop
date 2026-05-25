@@ -117,3 +117,9 @@
 - Password changes use ASP.NET Core Identity built-ins: `CheckPasswordAsync` for the current password check and `ChangePasswordAsync` for validation, hashing, and persistence.
 - Swagger now includes XML comments from the API assembly, so the new password endpoint summary/remarks show up in generated docs.
 - Validation and regression check passed with `dotnet build .\\src\\OutdoorsShop.Api\\OutdoorsShop.Api.csproj` and `dotnet test .\\OutdoorsShop.slnx`.
+
+---
+### 2026-05-25T22:39:03Z — Change-password feature
+- Merged inbox decision(s) related to change-password into decisions.md.
+- Noted implementation and UI work by Cinnamon/Malta/Creta in team records.
+

@@ -877,3 +877,94 @@ Frontend fix is present in commit `a704695`:
 - Live dev behavior indicates deployment lag, not a code regression in the verified source fix.
 
 
+
+---
+From .squad/decisions/inbox/malta-change-password.md
+
+# Malta â€” Change Password Profile UI
+
+- Date: 2026-05-25T19:08:32.516-03:00
+- Owner: Malta
+
+## Decision
+
+Add the password update flow directly to `frontend/src/pages/ProfilePage.tsx` instead of creating a separate route or standalone settings page.
+
+## Why
+
+- The existing profile editor already owns customer account maintenance.
+- Reusing the current `Card`, `Input`, `Alert`, and full-width primary `Button` keeps the experience visually consistent.
+- Splitting profile and password into separate forms avoids cross-submit side effects while keeping both actions on one page.
+
+## API contract used
+
+- Frontend client added `authApi.changePassword(payload)`.
+- Endpoint target: `PUT /api/v1/users/change-password`.
+- Payload: `{ currentPassword, newPassword, confirmNewPassword }`.
+
+## UI behavior
+
+- Inline validation covers required fields, minimum 8 characters for the new password, and confirmation matching.
+- Password fields clear after a successful change.
+- Success and error feedback stay scoped to the password section so profile-save messaging remains independent.
+
+
+---
+From .squad/decisions/inbox/creta-change-password-tests.md
+
+# Creta Finding â€” Change Password Tests (2026-05-25T19:08:32.516-03:00)
+
+## What I added
+- 6 backend integration contract tests for `PUT /api/v1/users/change-password`
+- 4 `AuthController.ChangePassword()` unit tests following the existing xUnit + Moq controller pattern
+- A bootstrap fix in `TestWebAppFactory` so SQLite creates Identity tables before startup seeding
+
+## Result
+- `dotnet test .\tests\OutdoorsShop.Api.Tests\OutdoorsShop.Api.Tests.csproj --no-restore`
+- 62 tests passed
+- 6 tests failed
+
+## Notable finding
+The current backend implementation lives at `PUT /api/v1/auth/change-password`, not the requested `PUT /api/v1/users/change-password` contract. The new integration tests intentionally target the requested route, and they currently fail with `404 Not Found` for that reason.
+
+## Edge cases covered
+- authenticated happy path
+- wrong current password
+- unauthenticated request
+- confirm password mismatch
+- new password shorter than 8 characters
+- old password rejection after successful change
+- second user unaffected by first user password change
+
+## Recommendation
+Have Cinnamon align the route to `PUT /api/v1/users/change-password` or explicitly update the team contract if `auth/change-password` is the intended public endpoint.
+
+
+---
+From .squad/decisions/inbox/cinnamon-change-password.md
+
+# Cinnamon inbox â€” change password endpoint
+
+- Date: 2026-05-25T19:08:32.516-03:00
+- Owner: Cinnamon
+- Area: backend auth API
+
+## Decision
+
+Add `PUT /api/v1/users/change-password` for authenticated users and handle the operation through `ICustomerService` / `CustomerService` while relying on ASP.NET Core Identity password APIs.
+
+## Rationale
+
+- The profile flow already lets authenticated users update personal data, but it lacked a secure self-service password change endpoint.
+- The requested contract is `/api/v1/users/change-password`, so the backend now exposes that route directly.
+- Using `CheckPasswordAsync` plus `ChangePasswordAsync` keeps password validation, hashing, and persistence inside ASP.NET Core Identity instead of custom code.
+
+## Implementation notes
+
+- Request body: `currentPassword`, `newPassword`, `confirmNewPassword`.
+- `CurrentPassword` mismatch returns `400 Bad Request` with a clear message.
+- Successful changes return `200 OK` with a success message.
+- Swagger XML comments are enabled in `OutdoorsShop.Api` so the endpoint description appears in generated docs.
+- Validation and regression were verified with `dotnet build .\\src\\OutdoorsShop.Api\\OutdoorsShop.Api.csproj` and `dotnet test .\\OutdoorsShop.slnx`.
+
+
