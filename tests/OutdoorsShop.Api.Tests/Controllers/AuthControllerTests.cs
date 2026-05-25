@@ -8,6 +8,7 @@ using Moq;
 using OutdoorsShop.Api;
 using OutdoorsShop.Api.Controllers;
 using OutdoorsShop.Core.DTOs.Auth;
+using OutdoorsShop.Core.DTOs.Common;
 using OutdoorsShop.Core.Entities;
 using OutdoorsShop.Core.Interfaces;
 using OutdoorsShop.Infrastructure.Identity;
@@ -84,6 +85,7 @@ public class AuthControllerTests
             userMgr.Object,
             signInMgr.Object,
             customerRepo.Object,
+            Mock.Of<ICustomerService>(),
             Options.Create(MakeJwtSettings()))
         {
             ControllerContext = new ControllerContext
@@ -121,6 +123,7 @@ public class AuthControllerTests
             userMgr.Object,
             signInMgr.Object,
             customerRepo.Object,
+            Mock.Of<ICustomerService>(),
             Options.Create(MakeJwtSettings()))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -161,6 +164,7 @@ public class AuthControllerTests
             userMgr.Object,
             signInMgr.Object,
             customerRepo.Object,
+            Mock.Of<ICustomerService>(),
             Options.Create(MakeJwtSettings()))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -184,6 +188,7 @@ public class AuthControllerTests
             userMgr.Object,
             signInMgr.Object,
             Mock.Of<ICustomerRepository>(),
+            Mock.Of<ICustomerService>(),
             Options.Create(MakeJwtSettings()))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -209,6 +214,7 @@ public class AuthControllerTests
             userMgr.Object,
             signInMgr.Object,
             Mock.Of<ICustomerRepository>(),
+            Mock.Of<ICustomerService>(),
             Options.Create(MakeJwtSettings()))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -225,13 +231,14 @@ public class AuthControllerTests
         var userMgr = BuildUserManagerMock();
         var signInMgr = BuildSignInManagerMock(userMgr);
 
-        // No refresh token cookie â€” _userManager.Users will be empty
+        // No refresh token cookie — _userManager.Users will be empty
         userMgr.Setup(m => m.Users).Returns(Enumerable.Empty<ApplicationUser>().AsQueryable());
 
         var controller = new AuthController(
             userMgr.Object,
             signInMgr.Object,
             Mock.Of<ICustomerRepository>(),
+            Mock.Of<ICustomerService>(),
             Options.Create(MakeJwtSettings()))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -240,6 +247,86 @@ public class AuthControllerTests
         var result = await controller.Refresh();
 
         result.Should().BeOfType<UnauthorizedResult>();
+    }
+
+    [Fact]
+    public async Task ChangePassword_ReturnsOk_WhenServiceSucceeds()
+    {
+        var userMgr = BuildUserManagerMock();
+        var signInMgr = BuildSignInManagerMock(userMgr);
+        var customerService = new Mock<ICustomerService>();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub, "user-42")
+        ], "Test"));
+
+        var dto = new ChangePasswordDto
+        {
+            CurrentPassword = "Current123!",
+            NewPassword = "NewPassword123!",
+            ConfirmNewPassword = "NewPassword123!"
+        };
+
+        customerService
+            .Setup(s => s.ChangePasswordAsync("user-42", dto))
+            .ReturnsAsync(OperationResult.Success());
+
+        var controller = new AuthController(
+            userMgr.Object,
+            signInMgr.Object,
+            Mock.Of<ICustomerRepository>(),
+            customerService.Object,
+            Options.Create(MakeJwtSettings()))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            }
+        };
+
+        var result = await controller.ChangePassword(dto);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task ChangePassword_Returns400_WhenCurrentPasswordIsWrong()
+    {
+        var userMgr = BuildUserManagerMock();
+        var signInMgr = BuildSignInManagerMock(userMgr);
+        var customerService = new Mock<ICustomerService>();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub, "user-42")
+        ], "Test"));
+
+        var dto = new ChangePasswordDto
+        {
+            CurrentPassword = "Wrong123!",
+            NewPassword = "NewPassword123!",
+            ConfirmNewPassword = "NewPassword123!"
+        };
+
+        customerService
+            .Setup(s => s.ChangePasswordAsync("user-42", dto))
+            .ReturnsAsync(OperationResult.Invalid("Current password is incorrect."));
+
+        var controller = new AuthController(
+            userMgr.Object,
+            signInMgr.Object,
+            Mock.Of<ICustomerRepository>(),
+            customerService.Object,
+            Options.Create(MakeJwtSettings()))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            }
+        };
+
+        var result = await controller.ChangePassword(dto);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
@@ -265,6 +352,7 @@ public class AuthControllerTests
             userMgr.Object,
             signInMgr.Object,
             customerRepo.Object,
+            Mock.Of<ICustomerService>(),
             Options.Create(MakeJwtSettings()))
         {
             ControllerContext = new ControllerContext

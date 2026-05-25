@@ -362,4 +362,13 @@ Key learnings:
 - Blank connection string via builder.UseSetting to prevent production AddDatabase from registering providers.
 - SqliteConnection for in-memory must remain open for factory lifetime; call EnsureCreated() and dispose in Dispose(bool).
 - Set JwtBearerOptions.MapInboundClaims = false so 'sub' maps to JwtRegisteredClaimNames.Sub and User.FindFirstValue works in AuthController.Me().
-\n\n## 2026-05-25T14:05:01Z — Scribe\nMerged creta-admin-catalog-verdict.md into decisions.md; re-validation in progress for Admin Products Catalog module.
+\n\n## 2026-05-25T14:05:01Z ï¿½ Scribe\nMerged creta-admin-catalog-verdict.md into decisions.md; re-validation in progress for Admin Products Catalog module.
+
+### 2026-05-25T19:08:32.516-03:00 â€” Change Password test coverage
+
+Added backend coverage for the Change Password feature using the existing xUnit + WebApplicationFactory patterns.
+
+- Added **6 integration contract tests** for the requested `PUT /api/v1/users/change-password` route covering happy path, wrong current password, unauthenticated access, confirm mismatch, short password, old-password invalidation, and cross-user isolation.
+- Added **4 controller unit tests** for `AuthController.ChangePassword()` covering success, validation failure, missing authenticated user, and missing `sub` claim.
+- Fixed the API test host bootstrap so SQLite creates the Identity schema before `Program.cs` seeds roles/users; this removed the prior `AspNetRoles` startup failure from the integration suite.
+- Current notable gap: the backend implementation is exposed at `PUT /api/v1/auth/change-password`, so the contract tests for `/api/v1/users/change-password` currently fail with `404 Not Found` until the route matches the agreed API contract.
