@@ -65,5 +65,10 @@ https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net
 Api Swagger:
 https://app-outdoors-api-dev.azurewebsites.net/swagger/index.html
 
+App Admin Page:
+https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net/admin/products
+Email: admin@outdoorsshop.dev
+Password: Admin@123456
+
 ## Resume
 copilot --resume=561f7ff3-e5a1-4fa8-9a38-91908166a3d2

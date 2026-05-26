@@ -22,6 +22,7 @@ Desktop.ini
 *.rsuser
 *.sln.docstates
 *.code-workspace
+*.bak
 .vscode/*
 !.vscode/extensions.json
 
@@ -29,6 +30,7 @@ Desktop.ini
 [Bb]in/
 [Oo]bj/
 publish/
+publish_output/
 artifacts/
 TestResults/
 coverage/
@@ -37,6 +39,8 @@ coverage/
 *.trx
 *.nupkg
 *.snupkg
+*.dll
+src/OutdoorsShop.Api/*.zip
 packages/
 
 # Local ASP.NET Core profiles and secret-bearing config
@@ -81,3 +85,4 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 crash.log
+
