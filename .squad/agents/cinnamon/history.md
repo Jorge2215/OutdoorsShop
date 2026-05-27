@@ -118,8 +118,20 @@
 - Swagger now includes XML comments from the API assembly, so the new password endpoint summary/remarks show up in generated docs.
 - Validation and regression check passed with `dotnet build .\\src\\OutdoorsShop.Api\\OutdoorsShop.Api.csproj` and `dotnet test .\\OutdoorsShop.slnx`.
 
+### 2026-05-27T15:13:32.353-03:00 — Stock queue producers for admin + orders
+
+- Added a shared `StockUpdateMessage` contract in Core plus `IStockUpdateQueuePublisher`/`StockUpdateQueuePublisher` so the API can emit `stock-updates` messages with the exact shape the Function consumer expects.
+- `InventoryService.UpdateAsync` now computes `quantityDelta` from the admin's absolute quantity, writes a matching `StockUpdateLog`, and best-effort publishes the queue message after the DB save.
+- `OrderService.CreateAsync` keeps synchronous stock deduction authoritative, aggregates duplicate order lines per product for stock validation/deduction, writes matching `StockUpdateLog` rows, and best-effort publishes one queue message per affected product.
+- `StockUpdateFunction` now skips duplicate messages when the same movement already exists in `StockUpdateLogs`, preventing double-application from API-originated events and making queue replays idempotent.
+- Validation passed with `dotnet test .\\tests\\OutdoorsShop.Api.Tests\\OutdoorsShop.Api.Tests.csproj --verbosity minimal` (68/68) and `dotnet test .\\tests\\OutdoorsShop.Functions.Tests\\OutdoorsShop.Functions.Tests.csproj --verbosity minimal` (21/21).
+
 ---
 ### 2026-05-25T22:39:03Z — Change-password feature
 - Merged inbox decision(s) related to change-password into decisions.md.
 - Noted implementation and UI work by Cinnamon/Malta/Creta in team records.
 
+### 2026-05-27T18:30:18Z — Azure feature inspection (inbox)
+
+- Authored `.squad/decisions/inbox/cinnamon-azure-feature-ideas.md` inspecting the current Functions/Queue/Blob capabilities and recommending options for Azure Functions + Queue + Storage.
+- Topic: Azure Functions + Queue + Storage feature recommendation.

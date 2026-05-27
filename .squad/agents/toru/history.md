@@ -33,4 +33,9 @@
   - ⚠️ **Critical note:** SQL is in `AzureSqlRg`, not `rg-outdoors-dev` — firewall rules must target `AzureSqlRg`. `deploySql=false` in Bicep prevents accidental re-provisioning.
   - `SeasonalDiscountFunction` correctly shown as Timer trigger (02:00 UTC), not HTTP.
 
-- 2026-05-24 � Cinnamon: Fixed API role seeding and added /api/health endpoint; redeployed API (commits: dev:786cc88, main:a6a1780).
+- 2026-05-24 � Cinnamon: Fixed API role seeding and added /api/health endpoint; redeployed API (commits: dev:786cc88, main:a6a1780).
+
+## 2026-05-27T18:30:18Z — Azure feature ideas (inbox)
+
+- Authored `.squad/decisions/inbox/toru-azure-feature-ideas.md` describing Azure Functions + Queue + Storage feature options for review by the team.
+- Topic: Azure Functions + Queue + Storage feature recommendation.
