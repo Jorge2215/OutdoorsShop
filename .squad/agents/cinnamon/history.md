@@ -7,3 +7,8 @@ Recent highlights (summary):
 - CI validation: API and Functions tests added/updated for receipt endpoint and HTML encoding; build/tests reported green in recent runs.
 
 Full chronological history archived to: history-archive-20260527T195134Z.md
+
+2026-05-27T20:27:02Z - scribe: merged inbox entries into .squad/decisions.md (
+  - cinnamon-azure-deploy-readiness.md
+  - toru-azure-deploy-readiness.md
+)

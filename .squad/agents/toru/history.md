@@ -39,3 +39,8 @@
 
 - Authored `.squad/decisions/inbox/toru-azure-feature-ideas.md` describing Azure Functions + Queue + Storage feature options for review by the team.
 - Topic: Azure Functions + Queue + Storage feature recommendation.
+
+2026-05-27T20:27:02Z - scribe: merged inbox entries into .squad/decisions.md (
+  - cinnamon-azure-deploy-readiness.md
+  - toru-azure-deploy-readiness.md
+)

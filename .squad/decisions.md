@@ -1,4 +1,56 @@
-﻿# Decisions
+﻿## 2026-05-27T20:27:02Z — Merged from inbox: cinnamon-azure-deploy-readiness.md
+
+# cinnamon-azure-deploy-readiness
+
+Date: 2026-05-27T17:14:25.938-03:00
+Owner: Cinnamon
+
+Summary:
+- Functions app (func-outdoors-dev) already has a CI/CD deploy workflow and is deployable.
+- Backend API (app-outdoors-api-dev) has no deployment workflow; backend CI only builds/tests.
+
+Recommendation:
+- Add a deployment step for the API (Azure App Service) before pushing full dev deploy.
+  - Use az webapp zip deploy or GitHub Action azure/webapps-deploy@v1 targeting app-outdoors-api-dev.
+  - Ensure App Service app settings include: ConnectionStrings:DefaultConnection, AzureStorage:ConnectionString, JwtSettings:Secret (or use Key Vault / managed identity).
+  - Run EF Core migrations on startup or add a migration step in pipeline.
+
+Status: pending
+
+## 2026-05-27T20:27:02Z — Merged from inbox: toru-azure-deploy-readiness.md
+
+# Azure deploy readiness
+
+author: "toru"
+date: 2026-05-27T17:14:25.938-03:00
+
+Summary
+
+- Frontend CI/CD: wired. .github/workflows/frontend.yml builds and deploys to Azure Static Web Apps (requires AZURE_STATIC_WEB_APPS_API_TOKEN secret).
+- Functions CI/CD: wired. .github/workflows/functions.yml builds, publishes, and runs az functionapp deployment on push to dev/main (uses Azure login secrets).
+- Backend API: NOT wired for automated deployment. .github/workflows/backend.yml currently runs CI (build/tests) only; API deployment is manual and must be added (run-from-package or az webapp deploy).
+
+Assessment
+
+- The frontend and functions can be deployed now via their workflows (ensure repo secrets exist and are correct).
+- The API should not be deployed automatically yet: the workflow lacks a deploy step and we must confirm configuration (CORS AllowedOrigins, connection strings, SQL firewall, secret rotation) before enabling automated deployment.
+
+Recommendation (safest next action)
+
+1. Deploy frontend + functions now (CI/CD already wired). Verify SWA hostname, update API AllowedOrigins and App Service settings accordingly.
+2. Hold API automated deploy until we: (a) add a controlled deploy step to backend.yml (run-from-package or az webapp), (b) add required secrets (AZURE_CLIENT_ID/SECRET/TENANT/SUBSCRIPTION or use OIDC), and (c) run a smoke test against the dev App Service.
+
+Action items (short)
+
+- Cinnamon: confirm AZURE_STATIC_WEB_APPS_API_TOKEN and Azure login secrets are present in repo secrets.
+- Cinnamon: open a small PR that adds an API deploy job to backend.yml (deploy to app-outdoors-api-dev on push to dev) and include a smoke test that hits /api/health.
+- Toru: after SWA is live, update decisions and confirm AllowedOrigins in app-outdoors-api-dev.
+
+Decision
+
+- Proceed with partial deployment: run frontend + functions CI/CD now; postpone automated API deployment until wiring and safety checks are in place.
+
+# Decisions
 
 ## 2026-05-25T14:05:01Z — Merged from inbox: cinnamon-soft-delete-fix.md
 
@@ -1386,5 +1438,6 @@ Notes
 - Keep functions cold-start friendly: small, single-responsibility worker per queue message.
 
 Decision made by Toru on 2026-05-27T15:30:18.727-03:00
+
 
 
