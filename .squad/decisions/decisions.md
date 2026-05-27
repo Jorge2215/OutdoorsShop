@@ -320,6 +320,51 @@ Creta's test requirement and fix the pre-existing 404 on that path.
 | `POST /api/v1/auth/register` | 200 + JWT | ✅ 200 |
 | `POST /api/v1/auth/login` | 200 + JWT | ✅ 200 |
 
+---
+
+From .squad/decisions/inbox/toru-sql-tables-missing-root-cause.md
+
+# Decision: SQL Tables Missing — Root Cause Analysis
+
+**Date:** 2026-05-27  
+**Author:** Toru (Architect)  
+**Status:** Finding / Action Required
+
+## Context
+
+Azure SQL Database `OutdoorsShopDB` (server `azure-sql-pampa`, resource group `AzureSqlRg`) exists but contains no application tables.
+
+## Root Cause
+
+**EF Core migrations are never applied automatically.** The architecture has no auto-migration path:
+
+1. **Bicep only provisions the empty database** — `infra/modules/sql.bicep` creates the SQL Server and an empty database. It does not run DDL or seed data.
+2. **No auto-migrate on startup** — `Program.cs` does NOT call `Database.Migrate()` or `EnsureCreated()`. This is by design for production safety.
+3. **CI/CD pipelines do not run migrations** — `backend.yml` runs build+test only; there is no `dotnet ef database update` step targeting Azure SQL.
+4. **Manual step documented but never executed** — `infra/README.md` (line 88–94) documents a post-deployment manual `dotnet ef database update` command that must be run against the Azure SQL connection string.
+
+## Evidence
+
+| File | Observation |
+|------|-------------|
+| `infra/modules/sql.bicep` | Creates empty DB (Basic tier, no schema) |
+| `infra/README.md:88-94` | Documents manual `dotnet ef database update` as required post-deploy step |
+| `src/OutdoorsShop.Api/Program.cs` | No `Migrate()` or `EnsureCreated()` call |
+| `.github/workflows/backend.yml` | No migration step |
+| `src/OutdoorsShop.Infrastructure/Data/Migrations/` | 4 migrations exist in code, never applied to Azure |
+
+## Recommended Next Steps
+
+1. **Immediate fix:** Run `dotnet ef database update` from a machine with network access to `azure-sql-pampa`, using the connection string from Key Vault or `infra/README.md` template.
+2. **Ensure firewall allows your IP** on `AzureSqlRg` → `azure-sql-pampa` before running migrations.
+3. **Long-term:** Add a migration step to the CI/CD pipeline (`backend.yml`) for the `dev` environment so tables are applied automatically on deploy. Protect `main`/prod with a manual approval gate.
+
+## Who Needs to Act
+
+- **Cinnamon** (or developer with Azure access): Execute migrations against Azure SQL.
+- **Toru**: Design pipeline migration step for ADR approval.
+
+
 ## Consequences
 
 - Roles are created once on first boot; subsequent restarts skip the `CreateAsync` call (idempotent).
