@@ -9,6 +9,7 @@
       "OutdoorsShop.Infrastructure/1.0.0": {
         "dependencies": {
           "Azure.Storage.Blobs": "12.28.0",
+          "Azure.Storage.Queues": "12.22.0",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "10.0.8",
           "Microsoft.Data.SqlClient": "6.1.1",
           "Microsoft.EntityFrameworkCore.SqlServer": "10.0.8",
@@ -68,6 +69,18 @@
           "lib/net10.0/Azure.Storage.Common.dll": {
             "assemblyVersion": "12.27.0.0",
             "fileVersion": "12.2700.26.26205"
+          }
+        }
+      },
+      "Azure.Storage.Queues/12.22.0": {
+        "dependencies": {
+          "Azure.Storage.Common": "12.27.0",
+          "System.Memory.Data": "10.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/Azure.Storage.Queues.dll": {
+            "assemblyVersion": "12.22.0.0",
+            "fileVersion": "12.2200.25.16105"
           }
         }
       },
@@ -1105,6 +1118,13 @@
       "sha512": "sha512-PBucMNzot6cYyN0isdte50iPCefJ4Ylg0B+KP4kxmqsc3ciOiDYh1MwVV6fPZPjoPnPvNRLN9TI6J5hgNf4huA==",
       "path": "azure.storage.common/12.27.0",
       "hashPath": "azure.storage.common.12.27.0.nupkg.sha512"
+    },
+    "Azure.Storage.Queues/12.22.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-HPQgOlfH+rJ4CL4V8ePFnsT/KKnvLU35ytxC3fsTTqOazhQ0593C0aPVu258DRN8bQCbx4OpNpjtiO9czDy3VQ==",
+      "path": "azure.storage.queues/12.22.0",
+      "hashPath": "azure.storage.queues.12.22.0.nupkg.sha512"
     },
     "Humanizer.Core/2.14.1": {
       "type": "package",

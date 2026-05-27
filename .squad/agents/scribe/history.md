@@ -15,3 +15,10 @@
 ## Learnings
 
 <!-- Append learnings below -->
+
+## 2026-05-27T19:51:34Z — Scribe
+
+- Merged 2 inbox decisions related to async order receipts into `.squad/decisions/decisions.md` and removed the inbox files.
+- Created orchestration log and session log entries; updated Cinnamon and Creta histories and archived Cinnamon's full history due to size.
+- Staged and prepared `.squad/` artifacts for commit.
+

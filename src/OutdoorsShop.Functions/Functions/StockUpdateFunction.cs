@@ -2,9 +2,9 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OutdoorsShop.Core.Entities;
+using OutdoorsShop.Core.Messages;
 using OutdoorsShop.Infrastructure.Data;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace OutdoorsShop.Functions.Functions;
 
@@ -43,6 +43,24 @@ public class StockUpdateFunction
         if (message is null)
         {
             _logger.LogWarning("Received null stock update message.");
+            return;
+        }
+
+        var existingLog = await _dbContext.StockUpdateLogs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(log =>
+                log.ProductId == message.ProductId &&
+                log.QuantityDelta == message.QuantityDelta &&
+                log.Reason == message.Reason &&
+                log.Notes == message.Notes &&
+                log.UpdatedAt == message.UpdatedAt);
+
+        if (existingLog is not null)
+        {
+            _logger.LogInformation(
+                "Stock update message for Product {ProductId} at {UpdatedAt} was already applied. Skipping duplicate.",
+                message.ProductId,
+                message.UpdatedAt);
             return;
         }
 
@@ -92,11 +110,3 @@ public class StockUpdateFunction
             message.ProductId, previousQty, inventory.QuantityAvailable, message.QuantityDelta, message.Reason);
     }
 }
-
-public record StockUpdateMessage(
-    [property: JsonPropertyName("productId")] int ProductId,
-    [property: JsonPropertyName("quantityDelta")] int QuantityDelta,
-    [property: JsonPropertyName("reason")] string Reason,
-    [property: JsonPropertyName("notes")] string? Notes,
-    [property: JsonPropertyName("updatedAt")] DateTimeOffset UpdatedAt
-);

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "NLiQp1XlM/g=",
+  "dgSpecHash": "XmlGLb+S4E4=",
   "success": true,
   "projectFilePath": "C:\\Users\\Jorgito\\source\\repos\\OutdoorsShop\\tests\\OutdoorsShop.Functions.Tests\\OutdoorsShop.Functions.Tests.csproj",
   "expectedPackageFiles": [
@@ -9,7 +9,7 @@
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.monitor.opentelemetry.exporter\\1.7.0\\azure.monitor.opentelemetry.exporter.1.7.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.blobs\\12.28.0\\azure.storage.blobs.12.28.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.common\\12.27.0\\azure.storage.common.12.27.0.nupkg.sha512",
-    "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.queues\\12.21.0\\azure.storage.queues.12.21.0.nupkg.sha512",
+    "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.queues\\12.22.0\\azure.storage.queues.12.22.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\castle.core\\5.1.1\\castle.core.5.1.1.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\coverlet.collector\\6.0.4\\coverlet.collector.6.0.4.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\fluentassertions\\7.2.0\\fluentassertions.7.2.0.nupkg.sha512",

@@ -3,16 +3,29 @@ using OutdoorsShop.Core.DTOs.Inventory;
 using OutdoorsShop.Core.DTOs.Reports;
 using OutdoorsShop.Core.Entities;
 using OutdoorsShop.Core.Interfaces;
+using OutdoorsShop.Core.Messages;
+using OutdoorsShop.Infrastructure.Data;
+using Microsoft.Extensions.Logging;
 
 namespace OutdoorsShop.Infrastructure.Services;
 
 public class InventoryService : IInventoryService
 {
     private readonly IInventoryRepository _inventoryRepository;
+    private readonly AppDbContext _dbContext;
+    private readonly IStockUpdateQueuePublisher _stockUpdateQueuePublisher;
+    private readonly ILogger<InventoryService> _logger;
 
-    public InventoryService(IInventoryRepository inventoryRepository)
+    public InventoryService(
+        IInventoryRepository inventoryRepository,
+        AppDbContext dbContext,
+        IStockUpdateQueuePublisher stockUpdateQueuePublisher,
+        ILogger<InventoryService> logger)
     {
         _inventoryRepository = inventoryRepository;
+        _dbContext = dbContext;
+        _stockUpdateQueuePublisher = stockUpdateQueuePublisher;
+        _logger = logger;
     }
 
     public async Task<PagedResult<InventoryDto>> GetPagedAsync(int pageNumber, int pageSize)
@@ -48,16 +61,57 @@ public class InventoryService : IInventoryService
         if (inventory is null)
             return OperationResult<InventoryDto>.NotFoundResult($"Inventory for product {productId} not found.");
 
+        StockUpdateMessage? stockUpdateMessage = null;
+        var updatedAt = DateTimeOffset.UtcNow;
+
         if (request.QuantityAvailable.HasValue)
-            inventory.QuantityAvailable = request.QuantityAvailable.Value;
+        {
+            var quantityDelta = request.QuantityAvailable.Value - inventory.QuantityAvailable;
+            if (quantityDelta != 0)
+            {
+                inventory.QuantityAvailable = request.QuantityAvailable.Value;
+                stockUpdateMessage = new StockUpdateMessage(
+                    ProductId: productId,
+                    QuantityDelta: quantityDelta,
+                    Reason: "AdminAdjustment",
+                    Notes: "Admin inventory quantity update",
+                    UpdatedAt: updatedAt);
+
+                _dbContext.StockUpdateLogs.Add(new StockUpdateLog
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = productId,
+                    QuantityDelta = quantityDelta,
+                    ResultingQuantity = inventory.QuantityAvailable,
+                    Reason = stockUpdateMessage.Reason,
+                    Notes = stockUpdateMessage.Notes,
+                    UpdatedAt = stockUpdateMessage.UpdatedAt
+                });
+            }
+        }
 
         if (request.ReorderThreshold.HasValue)
             inventory.ReorderThreshold = request.ReorderThreshold.Value;
 
-        inventory.LastUpdated = DateTime.UtcNow;
+        inventory.LastUpdated = updatedAt.UtcDateTime;
 
         await _inventoryRepository.UpdateAsync(inventory);
         await _inventoryRepository.SaveChangesAsync();
+
+        if (stockUpdateMessage is not null)
+        {
+            try
+            {
+                await _stockUpdateQueuePublisher.EnqueueAsync(stockUpdateMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Inventory for product {ProductId} was updated but the stock update queue publish failed.",
+                    productId);
+            }
+        }
 
         return OperationResult<InventoryDto>.Success(MapToDto(inventory));
     }

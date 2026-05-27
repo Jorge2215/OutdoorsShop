@@ -168,6 +168,37 @@ public class OrdersControllerTests
     }
 
     [Fact]
+    public async Task GetReceipt_ReturnsOk_WhenReceiptIsAvailable()
+    {
+        _orderService
+            .Setup(s => s.GetReceiptAsync(10, false, 5))
+            .ReturnsAsync(OperationResult<OrderReceiptDto>.Success(new OrderReceiptDto
+            {
+                OrderID = 10,
+                ReceiptAvailable = true,
+                DownloadUrl = "https://storage.example/order-10"
+            }));
+
+        var result = await CreateController("Customer", customerId: 5).GetReceipt(10);
+
+        result.Should().BeOfType<OkObjectResult>()
+            .Which.Value.Should().BeOfType<OrderReceiptDto>()
+            .Which.DownloadUrl.Should().Be("https://storage.example/order-10");
+    }
+
+    [Fact]
+    public async Task GetReceipt_Returns403_WhenCustomerAccessesOtherOrderReceipt()
+    {
+        _orderService
+            .Setup(s => s.GetReceiptAsync(99, false, 5))
+            .ReturnsAsync(OperationResult<OrderReceiptDto>.ForbiddenResult());
+
+        var result = await CreateController("Customer", customerId: 5).GetReceipt(99);
+
+        result.Should().BeOfType<ForbidResult>();
+    }
+
+    [Fact]
     public async Task UpdateStatus_Returns404_WhenOrderNotFound()
     {
         var request = new UpdateOrderStatusDto { Status = OrderStatus.Shipped };

@@ -522,3 +522,4 @@ C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\obj\Debu
 C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\obj\Debug\net10.0\OutdoorsShop.Api.Tests.genruntimeconfig.cache
 C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\obj\Debug\net10.0\ref\OutdoorsShop.Api.Tests.dll
 C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\OutdoorsShop.Api.xml
+C:\Users\Jorgito\source\repos\OutdoorsShop\tests\OutdoorsShop.Api.Tests\bin\Debug\net10.0\Azure.Storage.Queues.dll

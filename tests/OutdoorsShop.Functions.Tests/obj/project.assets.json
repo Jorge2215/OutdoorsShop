@@ -93,19 +93,19 @@
           }
         }
       },
-      "Azure.Storage.Queues/12.21.0": {
+      "Azure.Storage.Queues/12.22.0": {
         "type": "package",
         "dependencies": {
-          "Azure.Storage.Common": "12.22.0",
-          "System.Memory.Data": "6.0.0"
+          "Azure.Storage.Common": "12.23.0",
+          "System.Memory.Data": "6.0.1"
         },
         "compile": {
-          "lib/net6.0/Azure.Storage.Queues.dll": {
+          "lib/net8.0/Azure.Storage.Queues.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net6.0/Azure.Storage.Queues.dll": {
+          "lib/net8.0/Azure.Storage.Queues.dll": {
             "related": ".xml"
           }
         }
@@ -2157,6 +2157,7 @@
         "framework": ".NETCoreApp,Version=v10.0",
         "dependencies": {
           "Azure.Storage.Blobs": "12.28.0",
+          "Azure.Storage.Queues": "12.22.0",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "10.0.8",
           "Microsoft.Data.SqlClient": "6.1.1",
           "Microsoft.EntityFrameworkCore.SqlServer": "10.0.8",
@@ -2284,20 +2285,22 @@
         "lib/netstandard2.0/Azure.Storage.Common.xml"
       ]
     },
-    "Azure.Storage.Queues/12.21.0": {
-      "sha512": "4Ql71evO/iosdzZD8KFKBByVyvCXvVeC979w8JOdT7UdStncBg4BbnZREq3B56ud4paUgKdPv45qEasTYUsH2w==",
+    "Azure.Storage.Queues/12.22.0": {
+      "sha512": "HPQgOlfH+rJ4CL4V8ePFnsT/KKnvLU35ytxC3fsTTqOazhQ0593C0aPVu258DRN8bQCbx4OpNpjtiO9czDy3VQ==",
       "type": "package",
-      "path": "azure.storage.queues/12.21.0",
+      "path": "azure.storage.queues/12.22.0",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "CHANGELOG.md",
         "README.md",
-        "azure.storage.queues.12.21.0.nupkg.sha512",
+        "azure.storage.queues.12.22.0.nupkg.sha512",
         "azure.storage.queues.nuspec",
         "azureicon.png",
         "lib/net6.0/Azure.Storage.Queues.dll",
         "lib/net6.0/Azure.Storage.Queues.xml",
+        "lib/net8.0/Azure.Storage.Queues.dll",
+        "lib/net8.0/Azure.Storage.Queues.xml",
         "lib/netstandard2.0/Azure.Storage.Queues.dll",
         "lib/netstandard2.0/Azure.Storage.Queues.xml",
         "lib/netstandard2.1/Azure.Storage.Queues.dll",

@@ -42,6 +42,29 @@ public class OrdersController : ControllerBase
         return ToActionResult(result);
     }
 
+    /// <summary>
+    /// Returns receipt availability for an order and a short-lived download URL when the receipt has been generated.
+    /// </summary>
+    [HttpGet("{id:int}/receipt")]
+    [ProducesResponseType(typeof(OrderReceiptDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetReceipt(int id)
+    {
+        var result = await _orderService.GetReceiptAsync(id, User.IsInRole("Administrator"), GetCurrentCustomerId());
+
+        if (result.Forbidden)
+            return Forbid();
+
+        if (result.NotFound)
+            return NotFound(new { message = result.ErrorMessage });
+
+        if (!result.Succeeded || result.Value is null)
+            return BadRequest(new { message = result.ErrorMessage ?? "Receipt request could not be completed." });
+
+        return Ok(result.Value);
+    }
+
     [HttpPost]
     [Authorize(Roles = "Customer")]
     [ProducesResponseType(typeof(OrderDto), StatusCodes.Status201Created)]

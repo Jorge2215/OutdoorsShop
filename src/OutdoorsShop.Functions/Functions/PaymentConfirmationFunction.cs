@@ -2,6 +2,8 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using OutdoorsShop.Core.Enums;
+using OutdoorsShop.Core.Interfaces;
+using OutdoorsShop.Core.Messages;
 using OutdoorsShop.Infrastructure.Data;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -11,17 +13,23 @@ namespace OutdoorsShop.Functions.Functions;
 public class PaymentConfirmationFunction
 {
     private readonly AppDbContext _dbContext;
+    private readonly IReceiptQueuePublisher _receiptQueuePublisher;
     private readonly ILogger<PaymentConfirmationFunction> _logger;
 
-    public PaymentConfirmationFunction(AppDbContext dbContext, ILogger<PaymentConfirmationFunction> logger)
+    public PaymentConfirmationFunction(
+       AppDbContext dbContext,
+       IReceiptQueuePublisher receiptQueuePublisher,
+       ILogger<PaymentConfirmationFunction> logger)
     {
-        _dbContext = dbContext;
-        _logger = logger;
+       _dbContext = dbContext;
+       _receiptQueuePublisher = receiptQueuePublisher;
+       _logger = logger;
     }
 
     /// <summary>
     /// Triggered by messages on the 'payment-confirmations' queue.
-    /// Updates order status and payment fields; restores inventory on payment failure.
+    /// Updates order status and payment fields, enqueues receipt generation on success,
+    /// and restores inventory on payment failure.
     /// </summary>
     [Function("PaymentConfirmation")]
     public async Task Run([QueueTrigger("payment-confirmations", Connection = "AzureWebJobsStorage")] string queueMessage)
@@ -89,6 +97,29 @@ public class PaymentConfirmationFunction
         }
 
         await _dbContext.SaveChangesAsync();
+
+        if (order.PaymentStatus == PaymentStatus.Confirmed)
+        {
+            var receiptMessage = new ReceiptGenerationMessage(
+                OrderId: order.OrderID,
+                PaymentReference: order.PaymentReference ?? message.PaymentReference,
+                ConfirmedAt: message.ProcessedAt,
+                ReceiptBlobName: OrderReceiptStorageConventions.GetBlobName(order.OrderID));
+
+            try
+            {
+                await _receiptQueuePublisher.EnqueueAsync(receiptMessage);
+                _logger.LogInformation(
+                    "Receipt generation queued for order {OrderId}.",
+                    order.OrderID);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to queue receipt generation for order {OrderId}.", order.OrderID);
+                throw;
+            }
+        }
+
         _logger.LogInformation(
             "Order {OrderId} saved with status {Status}.", order.OrderID, order.Status);
     }

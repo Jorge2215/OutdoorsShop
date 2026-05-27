@@ -401,6 +401,10 @@
               "target": "Package",
               "version": "[12.28.0, )"
             },
+            "Azure.Storage.Queues": {
+              "target": "Package",
+              "version": "[12.22.0, )"
+            },
             "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
               "target": "Package",
               "version": "[10.0.8, )"

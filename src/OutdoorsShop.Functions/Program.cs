@@ -1,4 +1,5 @@
 using Azure.Monitor.OpenTelemetry.Exporter;
+using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
 using Microsoft.Azure.Functions.Worker.OpenTelemetry;
@@ -9,6 +10,7 @@ using OpenTelemetry;
 using OutdoorsShop.Core.Interfaces;
 using OutdoorsShop.Infrastructure.Data;
 using OutdoorsShop.Infrastructure.Repositories;
+using OutdoorsShop.Infrastructure.Services;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
@@ -23,6 +25,14 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
 builder.Services.AddSingleton(TimeProvider.System);
+
+var storageConnectionString = builder.Configuration["AzureStorage:ConnectionString"]
+    ?? builder.Configuration["AzureWebJobsStorage"]
+    ?? "UseDevelopmentStorage=true";
+
+builder.Services.AddSingleton(new BlobServiceClient(storageConnectionString));
+builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
+builder.Services.AddScoped<IReceiptQueuePublisher, ReceiptQueuePublisher>();
 
 // Repositories
 builder.Services.AddScoped<IProductRepository, ProductRepository>();
