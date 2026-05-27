@@ -27,6 +27,13 @@
 - `ProductsController` public reads stay filtered by the global `Product.IsActive` query filter by default, but admin callers can now pass `includeInactive=true` on `GET /api/v1/products` and `GET /api/v1/products/{id}`.
 - The bypass lives in `IProductRepository`/`ProductRepository` via `GetAllIncludingInactiveAsync` and `GetByIdIncludingInactiveAsync`, both using `IgnoreQueryFilters()` so soft-deleted products remain reviewable/reactivatable without exposing them to anonymous users.
 - `ProductDto` already surfaced `IsActive`; the controller mapping was already correct, so admin reads now return `isActive=false` for soft-deleted products instead of a misleading 404.
+
+### 2026-05-27T20:45:20.123-03:00 — Added workflow_dispatch to backend workflow
+
+- Added `workflow_dispatch` trigger to `.github/workflows/backend.yml` so the backend workflow can now be manually triggered from the GitHub Actions UI.
+- Kept existing `push` and `pull_request` triggers and all job logic unchanged.
+- YAML validated; no logic changes to jobs or steps.
+
 ### 2026-05-24T19:41:04.973-03:00 — Selective dev commit + dev → main merge
 
 - Selective source commit on `dev`: `56aaffc` — committed only real source/config files (`.copilot-main`, workflow files, infra files, `BasePrompt.md`, `frontend/public/staticwebapp.config.json`, `src/OutdoorsShop.Functions/Functions/HealthFunction.cs`) and left build artifacts/untracked packages out.
@@ -118,8 +125,12 @@
 - Swagger now includes XML comments from the API assembly, so the new password endpoint summary/remarks show up in generated docs.
 - Validation and regression check passed with `dotnet build .\\src\\OutdoorsShop.Api\\OutdoorsShop.Api.csproj` and `dotnet test .\\OutdoorsShop.slnx`.
 
+### 2026-05-27T20:45:20.123-03:00 — Backend CI manual trigger
+
+- Updated `.github\\workflows\\backend.yml` to add `workflow_dispatch` without changing the existing `push`/`pull_request` branch or path filters, so backend CI can still auto-run on `src/**` changes and also be started manually from GitHub Actions.
+- Structural validation passed by parsing the workflow with `npx --yes js-yaml .github\\workflows\\backend.yml`.
+
 ---
 ### 2026-05-25T22:39:03Z — Change-password feature
 - Merged inbox decision(s) related to change-password into decisions.md.
 - Noted implementation and UI work by Cinnamon/Malta/Creta in team records.
-
