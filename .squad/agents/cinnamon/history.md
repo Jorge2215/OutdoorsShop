@@ -12,3 +12,8 @@ Full chronological history archived to: history-archive-20260527T195134Z.md
   - cinnamon-azure-deploy-readiness.md
   - toru-azure-deploy-readiness.md
 )
+
+## 2026-05-27T20:47:27Z — scribe update
+- Merged 1 inbox items into decisions.md
+- Archived 0 entries (none older than cutoff)
+

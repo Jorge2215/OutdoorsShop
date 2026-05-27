@@ -1441,3 +1441,35 @@ Decision made by Toru on 2026-05-27T15:30:18.727-03:00
 
 
 
+
+## 2026-05-27T20:47:27Z — Merged from inbox: cinnamon-backend-deploy-checklist.md
+
+
+# cinnamon-backend-deploy-checklist
+
+date: 2026-05-27T17:36:03.919-03:00
+
+Summary: Practical checklist to finish deployment of OutdoorsShop backend API (CI exists; no deploy step yet).
+
+Checklist (do these in order):
+
+1. Add a deployment job to .github/workflows/backend.yml that logs into Azure and deploys the Web App package. Use `azure/login` + `azure/webapps-deploy` or `actions/upload-artifact` + `az webapp deploy`. Create a Service Principal and save its JSON as `AZURE_CREDENTIALS` in the repo secrets. (status: MISSING)
+
+2. Ensure Key Vault secrets referenced in App Service settings exist and are correct: `sql-connection-string`, `storage-connection-string`, `jwt-secret`. Verify the Key Vault references are the app settings (they currently are); if secrets are missing, add them to kv-outdoors-dev. (status: PARTIALLY DONE — references present; verify secret values)
+
+3. Remove the malformed App Service app setting entry (the separate plain-name/value pair for AzureStorage__ConnectionString) — it may override the Key Vault reference. Keep only the Key Vault reference `ConnectionStrings__DefaultConnection = @Microsoft.KeyVault(...)` style. (status: ACTION REQUIRED — malformed setting present)
+
+4. Run EF Core migrations against the Azure SQL DB after deployment (or add a pipeline step to apply migrations). Use `dotnet ef database update --connection "<connection-string>"` or run migrations from app startup with caution. Ensure SQL firewall and credentials allow migration. (status: MISSING — migrations not applied remotely)
+
+5. Confirm Azure Storage: containers (`product-images`, `order-receipts`, `reports`) and queues (`stock-updates`, `receipt-requests`) exist in the target storage account. Create them if missing. (status: UNKNOWN — app settings reference containers; verify existence)
+
+6. Verify WEBSITE_RUN_FROM_PACKAGE and other run settings in App Service (already set). Confirm the app's Managed Identity or Key Vault access policy allows resolving Key Vault references from the App Service. (status: DONE for WEBSITE_RUN_FROM_PACKAGE; verify Key Vault access policy)
+
+7. Deploy: push a PR with the workflow change or merge to main/dev; after deploy, smoke-test critical endpoints (health, auth, product list, receipt URL). Apply migration if not automated. (status: MISSING — deploy job not merged)
+
+Notes:
+- The malformed app setting (name/value) must be removed or corrected: it can override the intended Key Vault-based connection string and cause failures.
+- Keep secrets only in Key Vault or GitHub Secrets; do not store DB credentials in App Service plain settings.
+
+Cinnamon
+
