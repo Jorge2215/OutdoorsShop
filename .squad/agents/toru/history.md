@@ -65,3 +65,7 @@
 - **2026-05-27T22:24:02.039-03:00 — Validation & permissions check:** Confirmed dev rollout path for async report export: Frontend (SWA) and Functions auto-deploy on push; API deploy and EF migration remain manual. Verified current Azure CLI identity (JVILABOA@pampa.com) has Owner role on subscription `bb5ffe61-553c-4019-a657-79878bed7e08`, which is sufficient to perform API deployment and run the EF migration against the dev Azure SQL. Documented required sequencing and app-setting requirements in `.squad/decisions/inbox/toru-report-export-rollout-order.md`.
 
 - Recorded recovery-branch cleanup and Azure SQL missing-table root-cause notes in the shared decision record.
+
+## 2026-05-28T01:24:02Z — Orchestration
+- Orchestration log written: `.squad/orchestration-log/2026-05-28T01-24-02Z-toru.md`.
+- Session log recorded: `.squad/log/2026-05-28T01-24-02Z-scribe-session.md`.

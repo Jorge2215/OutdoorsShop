@@ -22,3 +22,7 @@
 ## 2026-05-28T01:15:13Z — Additional Cinnamon update
 - The API deploy reached `app-outdoors-api-dev`, but the `20260528003127_AddReportExportRequests` EF migration could not be applied from the current session because the active Azure identity could not read the Key Vault-referenced `ConnectionStrings__DefaultConnection` secret.
 - Follow-up: grant the deployment identity Key Vault secret read access or run the migration through a CI/CD/service principal path that already has that permission.
+
+## 2026-05-28T01:24:02Z — Orchestration
+- Orchestration log written: `.squad/orchestration-log/2026-05-28T01-24-02Z-cinnamon.md`.
+- Session log recorded: `.squad/log/2026-05-28T01-24-02Z-scribe-session.md`.
