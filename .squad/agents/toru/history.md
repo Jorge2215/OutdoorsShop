@@ -69,3 +69,16 @@
 ## 2026-05-28T01:24:02Z — Orchestration
 - Orchestration log written: `.squad/orchestration-log/2026-05-28T01-24-02Z-toru.md`.
 - Session log recorded: `.squad/log/2026-05-28T01-24-02Z-scribe-session.md`.
+
+## 2026-05-28T03:01:40Z — Scribe: inbox merge & orchestration
+- Merged remaining decision inbox files into `.squad/decisions/decisions.md` (3 files: cinnamon-api-deploy-workflow.md, cinnamon-design-time-ef-config.md, toru-api-deploy-workflow.md).
+- Orchestration log written: `.squad/orchestration-log/2026-05-28T03-01-40Z-toru.md`.
+- Session log recorded: `.squad/log/2026-05-28T03-01-40Z-api-deploy-workflow.md`.
+
+- **2026-05-27T23:58:19.829-03:00 — API deploy workflow decision & guidance:**
+  - Finding: repo currently lacks an automatic App Service deploy step for the Web API; backend.yml only builds and tests.
+  - Decision: Extend `.github/workflows/backend.yml` (add a publish+deploy job) rather than creating a separate workflow so CI/test and deploy live together as in other repo workflows.
+  - Naming / targets: `app-outdoors-api-dev` / `rg-outdoors-dev` for dev; `app-outdoors-api-prod` / `rg-outdoors-prod` for main/prod.
+  - Approach: Mirror existing Functions workflow — dotnet publish -> zip -> azure/login@v2 -> az webapp deployment source config-zip --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/api.zip --timeout 600.
+  - Secrets required in repository: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`. Also ensure `SQL_ADMIN_PASSWORD` / Key Vault references are present as needed.
+  - Owner: Cinnamon to implement the change in `backend.yml` and validate deployment to dev. Keep deploy step gated by `if: github.event_name == 'push'` and environment mapping identical to `functions.yml`.

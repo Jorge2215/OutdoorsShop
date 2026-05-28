@@ -5,6 +5,14 @@
 
 ## Learnings
 
+### 2026-05-27T23:58:19.829-03:00 — Backend workflow deploy rebuild
+- Rebuilt `.github/workflows/backend.yml` as the single backend CI/CD workflow: PRs still restore/build/test only, while pushes now publish `src/OutdoorsShop.Api/OutdoorsShop.Api.csproj`, deploy to the branch-selected App Service, and smoke test `/api/health`.
+- Followed the existing Functions workflow pattern for OIDC Azure login and branch-based `dev`/`prod` environment selection, using `app-outdoors-api-dev` / `rg-outdoors-dev` from repo docs and the established `{abbreviation}-outdoors-{environment}` convention for prod names.
+
+### 2026-05-28T00:09:41.836-03:00 — Workflow fix pushed
+- Pushed `dev` with commit `d01e899` after staging only `.github/workflows/backend.yml`, leaving unrelated `.squad` history edits untouched in the working tree.
+- Commit message used: `fix: rebuild API deploy workflow`, matching the rebuilt API publish/deploy pipeline now tracked in the backend workflow.
+
 ### 2026-05-27T22:24:02.039-03:00 — Deployment & migration attempt
 - Deployed `app-outdoors-api-dev` (resource group `rg-outdoors-dev`) via ZIP publish and confirmed the app responded to an HTTPS probe at its default host.
 - Attempted to apply EF migration `20260528003127_AddReportExportRequests` but `ConnectionStrings__DefaultConnection` is a Key Vault reference and the current Azure CLI identity does not have GET access to the referenced secret; migration was not executed from this session.
@@ -26,3 +34,8 @@
 ## 2026-05-28T01:24:02Z — Orchestration
 - Orchestration log written: `.squad/orchestration-log/2026-05-28T01-24-02Z-cinnamon.md`.
 - Session log recorded: `.squad/log/2026-05-28T01-24-02Z-scribe-session.md`.
+
+## 2026-05-28T03:01:40Z — Scribe: inbox merge & orchestration
+- Merged remaining decision inbox files into `.squad/decisions/decisions.md` (3 files: cinnamon-api-deploy-workflow.md, cinnamon-design-time-ef-config.md, toru-api-deploy-workflow.md).
+- Orchestration log written: `.squad/orchestration-log/2026-05-28T03-01-40Z-cinnamon.md`.
+- Session log recorded: `.squad/log/2026-05-28T03-01-40Z-api-deploy-workflow.md`.

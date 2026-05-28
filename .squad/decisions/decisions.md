@@ -1056,3 +1056,117 @@ Add `PUT /api/v1/users/change-password` for authenticated users and handle the o
 - Validation and regression were verified with `dotnet build .\\src\\OutdoorsShop.Api\\OutdoorsShop.Api.csproj` and `dotnet test .\\OutdoorsShop.slnx`.
 
 
+
+---
+
+From .squad/decisions/inbox/cinnamon-api-deploy-workflow.md
+
+Date: 2026-05-27T23:58:19.829-03:00
+Owner: Cinnamon
+
+## Decision
+
+Rebuilt the missing API deployment path inside `.github/workflows/backend.yml` instead of adding a separate workflow. The workflow now keeps CI build/test behavior for pull requests and adds a push-only artifact publish + Azure App Service deploy job with branch-based `dev`/`prod` targeting.
+
+## Why
+
+- Keeping CI and deploy in one workflow matches the existing repo pattern from `functions.yml` and avoids splitting backend status across multiple workflow files.
+- A separate deploy job behind `needs: build-and-test` keeps pull requests deployment-free while ensuring only tested pushes reach App Service.
+- The deploy job includes an `/api/health` smoke check so failed deployments surface immediately in Actions.
+
+## Implementation notes
+
+- `main` deploys to `app-outdoors-api-prod` in `rg-outdoors-prod`; `dev` deploys to `app-outdoors-api-dev` in `rg-outdoors-dev`.
+- The API package is produced from `src/OutdoorsShop.Api/OutdoorsShop.Api.csproj` with `dotnet publish` for Linux x64 and deployed via `az webapp deployment source config-zip`.
+- The workflow now requests `id-token: write` so Azure OIDC login matches the existing functions deployment pattern.
+
+
+---
+
+From .squad/decisions/inbox/cinnamon-design-time-ef-config.md
+
+Date: 2026-05-27T23:00:17.369-03:00
+Owner: Cinnamon
+
+Summary:
+- Design-time EF now resolves configuration from the API project instead of the infrastructure working directory.
+- The factory loads appsettings.json, appsettings.{Environment}.json, API user secrets, then environment variables, and throws a clear error when DefaultConnection is missing or left on the local-development placeholder.
+
+Rationale:
+- `dotnet ef` needs to see the same layered configuration as the API to avoid accidental fallback to the checked-in local SQL Server string.
+- Failing loudly makes local setup issues easier to diagnose and keeps secrets out of source-controlled config.
+
+
+---
+
+From .squad/decisions/inbox/toru-api-deploy-workflow.md
+
+---
+created_at: 2026-05-27T23:58:19.829-03:00
+---
+
+Title: API App Service deploy workflow — decision and implementation notes
+
+Summary
+- The repository currently builds and tests the backend (backend.yml) but does not deploy the Web API to App Service automatically. This decision documents the recommended, actionable approach Cinnamon should implement.
+
+Decision
+- Extend the existing `.github/workflows/backend.yml` to add a publish-and-deploy job rather than creating a separate workflow.
+
+Rationale
+- Consistency: Functions and frontend workflows build+deploy in the same file; matching that pattern reduces cognitive overhead and centralises backend CI/CD.
+- Re-use: The Functions workflow already uses dotnet publish + zip + az CLI deployment; mirroring it reduces novelty and review time.
+
+Targets / Naming (exact)
+- Dev App Service: app-outdoors-api-dev
+- Dev Resource Group: rg-outdoors-dev
+- Prod App Service: app-outdoors-api-prod
+- Prod Resource Group: rg-outdoors-prod
+
+Implementation notes (apply to backend.yml)
+1. Add environment and env mapping (same as functions.yml):
+   environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+   env:
+     AZURE_WEBAPP_NAME: ${{ github.ref_name == 'main' && 'app-outdoors-api-prod' || 'app-outdoors-api-dev' }}
+     AZURE_RESOURCE_GROUP: ${{ github.ref_name == 'main' && 'rg-outdoors-prod' || 'rg-outdoors-dev' }}
+
+2. Build/publish steps (example):
+   - name: Publish API artifact
+     run: dotnet publish src/OutdoorsShop.Api/OutdoorsShop.Api.csproj --configuration Release -r linux-x64 --self-contained false /p:UseAppHost=false --output publish/api
+
+   - name: Package API artifact
+     run: |
+       cd publish/api
+       zip -r ../api.zip .
+
+   - name: Upload API publish artifact
+     uses: actions/upload-artifact@v4
+     with:
+       name: api-publish
+       path: publish/api.zip
+
+3. Deployment (mirror Functions workflow):
+   - name: Azure login
+     if: github.event_name == 'push'
+     uses: azure/login@v2
+     with:
+       client-id: ${{ secrets.AZURE_CLIENT_ID }}
+       tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+       subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+   - name: Deploy WebApp package
+     if: github.event_name == 'push'
+     run: az webapp deployment source config-zip --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/api.zip --timeout 600
+
+Secrets required
+- AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (for azure/login@v2)
+- Ensure Key Vault and any DB passwords are available to the App Service at runtime (via Key Vault references or app settings)
+
+Owner
+- Cinnamon: implement the changes in backend.yml, run a dev push, and validate API endpoint (e.g., /api/health) and CORS settings.
+
+Notes
+- Keep the deploy step gated by `if: github.event_name == 'push'` so PRs run build/tests but pushes can deploy.
+- If the team prefers a separate deploy-only workflow, this file can be refactored later; this decision prioritises quick, consistent implementation.
+
+
