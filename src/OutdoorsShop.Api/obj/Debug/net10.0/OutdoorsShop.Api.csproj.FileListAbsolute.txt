@@ -188,3 +188,4 @@ C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Api\obj\Debug\net10.
 C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Api\obj\Debug\net10.0\ref\OutdoorsShop.Api.dll
 C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Api\bin\Debug\net10.0\OutdoorsShop.Api.xml
 C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Api\obj\Debug\net10.0\OutdoorsShop.Api.xml
+C:\Users\Jorgito\source\repos\OutdoorsShop\src\OutdoorsShop.Api\bin\Debug\net10.0\Azure.Storage.Queues.dll

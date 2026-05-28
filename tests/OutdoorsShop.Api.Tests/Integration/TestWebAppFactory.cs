@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Moq;
 using OutdoorsShop.Core.Entities;
 using OutdoorsShop.Core.Interfaces;
+using OutdoorsShop.Core.Messages;
 using OutdoorsShop.Infrastructure.Data;
 using OutdoorsShop.Infrastructure.Identity;
 using System.Net.Http.Json;
@@ -70,9 +71,29 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 .ReturnsAsync("https://test.blob.core.windows.net/test/blob?sas=token");
             blobMock.Setup(b => b.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .Returns(Task.CompletedTask);
+            blobMock.Setup(b => b.ExistsAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
             blobMock.Setup(b => b.UploadProductImageAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
                 .ReturnsAsync("https://test.blob.core.windows.net/product-images/products/1/test.jpg");
             services.AddSingleton(blobMock.Object);
+
+            services.RemoveAll<IStockUpdateQueuePublisher>();
+            var queueMock = new Mock<IStockUpdateQueuePublisher>();
+            queueMock.Setup(q => q.EnqueueAsync(It.IsAny<StockUpdateMessage>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.AddSingleton(queueMock.Object);
+
+            services.RemoveAll<IReceiptQueuePublisher>();
+            var receiptQueueMock = new Mock<IReceiptQueuePublisher>();
+            receiptQueueMock.Setup(q => q.EnqueueAsync(It.IsAny<ReceiptGenerationMessage>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.AddSingleton(receiptQueueMock.Object);
+
+            services.RemoveAll<IReportExportQueuePublisher>();
+            var reportExportQueueMock = new Mock<IReportExportQueuePublisher>();
+            reportExportQueueMock.Setup(q => q.EnqueueAsync(It.IsAny<ReportExportRequestMessage>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.AddSingleton(reportExportQueueMock.Object);
 
             using var scope = services.BuildServiceProvider().CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -197,4 +218,3 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
         return doc.RootElement.GetProperty("accessToken").GetString()!;
     }
 }
-

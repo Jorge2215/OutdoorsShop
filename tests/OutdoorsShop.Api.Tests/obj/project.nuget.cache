@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "7eVTq3ZBAjo=",
+  "dgSpecHash": "D63RvXztZ1Y=",
   "success": true,
   "projectFilePath": "C:\\Users\\Jorgito\\source\\repos\\OutdoorsShop\\tests\\OutdoorsShop.Api.Tests\\OutdoorsShop.Api.Tests.csproj",
   "expectedPackageFiles": [
@@ -8,6 +8,7 @@
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.identity\\1.14.2\\azure.identity.1.14.2.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.blobs\\12.28.0\\azure.storage.blobs.12.28.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.common\\12.27.0\\azure.storage.common.12.27.0.nupkg.sha512",
+    "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.queues\\12.22.0\\azure.storage.queues.12.22.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\castle.core\\5.1.1\\castle.core.5.1.1.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\closedxml\\0.105.0\\closedxml.0.105.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\closedxml.parser\\2.0.0\\closedxml.parser.2.0.0.nupkg.sha512",

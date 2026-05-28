@@ -1,4 +1,56 @@
-﻿# Decisions
+﻿## 2026-05-27T20:27:02Z — Merged from inbox: cinnamon-azure-deploy-readiness.md
+
+# cinnamon-azure-deploy-readiness
+
+Date: 2026-05-27T17:14:25.938-03:00
+Owner: Cinnamon
+
+Summary:
+- Functions app (func-outdoors-dev) already has a CI/CD deploy workflow and is deployable.
+- Backend API (app-outdoors-api-dev) has no deployment workflow; backend CI only builds/tests.
+
+Recommendation:
+- Add a deployment step for the API (Azure App Service) before pushing full dev deploy.
+  - Use az webapp zip deploy or GitHub Action azure/webapps-deploy@v1 targeting app-outdoors-api-dev.
+  - Ensure App Service app settings include: ConnectionStrings:DefaultConnection, AzureStorage:ConnectionString, JwtSettings:Secret (or use Key Vault / managed identity).
+  - Run EF Core migrations on startup or add a migration step in pipeline.
+
+Status: pending
+
+## 2026-05-27T20:27:02Z — Merged from inbox: toru-azure-deploy-readiness.md
+
+# Azure deploy readiness
+
+author: "toru"
+date: 2026-05-27T17:14:25.938-03:00
+
+Summary
+
+- Frontend CI/CD: wired. .github/workflows/frontend.yml builds and deploys to Azure Static Web Apps (requires AZURE_STATIC_WEB_APPS_API_TOKEN secret).
+- Functions CI/CD: wired. .github/workflows/functions.yml builds, publishes, and runs az functionapp deployment on push to dev/main (uses Azure login secrets).
+- Backend API: NOT wired for automated deployment. .github/workflows/backend.yml currently runs CI (build/tests) only; API deployment is manual and must be added (run-from-package or az webapp deploy).
+
+Assessment
+
+- The frontend and functions can be deployed now via their workflows (ensure repo secrets exist and are correct).
+- The API should not be deployed automatically yet: the workflow lacks a deploy step and we must confirm configuration (CORS AllowedOrigins, connection strings, SQL firewall, secret rotation) before enabling automated deployment.
+
+Recommendation (safest next action)
+
+1. Deploy frontend + functions now (CI/CD already wired). Verify SWA hostname, update API AllowedOrigins and App Service settings accordingly.
+2. Hold API automated deploy until we: (a) add a controlled deploy step to backend.yml (run-from-package or az webapp), (b) add required secrets (AZURE_CLIENT_ID/SECRET/TENANT/SUBSCRIPTION or use OIDC), and (c) run a smoke test against the dev App Service.
+
+Action items (short)
+
+- Cinnamon: confirm AZURE_STATIC_WEB_APPS_API_TOKEN and Azure login secrets are present in repo secrets.
+- Cinnamon: open a small PR that adds an API deploy job to backend.yml (deploy to app-outdoors-api-dev on push to dev) and include a smoke test that hits /api/health.
+- Toru: after SWA is live, update decisions and confirm AllowedOrigins in app-outdoors-api-dev.
+
+Decision
+
+- Proceed with partial deployment: run frontend + functions CI/CD now; postpone automated API deployment until wiring and safety checks are in place.
+
+# Decisions
 
 ## 2026-05-25T14:05:01Z — Merged from inbox: cinnamon-soft-delete-fix.md
 
@@ -886,6 +938,129 @@ Archived: 2026-05-24T035031Z
 
 ## Merged from inbox: copilot-directive-frontend-swa.md
 
+## 2026-05-27T15:13:32.353-03:00 — Merged from inbox: cinnamon-stock-producer.md
+
+# Cinnamon — 2026-05-27T15:13:32.353-03:00 — Stock producer integration
+
+## Decision
+- Keep the API/order services as the source of truth for inventory mutations.
+- Emit `stock-updates` queue messages after the database write, using the existing consumer contract (`productId`, `quantityDelta`, `reason`, `notes`, `updatedAt`).
+- Make the `StockUpdate` function idempotent by skipping messages whose exact stock movement is already present in `StockUpdateLogs`.
+
+## Why
+- `InventoryService.UpdateAsync` already applies admin inventory changes directly, and `OrderService.CreateAsync` already deducts stock directly.
+- Blindly adding queue publishing on top of those writes would double-apply stock changes when the existing `StockUpdate` function processed the message.
+- Consumer-side dedup keeps current stock math correct while still wiring both admin and order flows into the queue contract.
+
+## Impact
+- Admin inventory updates now publish delta-based queue messages without changing the existing absolute-quantity API contract.
+- Order creation now publishes queue messages for stock deductions, aggregated per product, while preserving current synchronous stock reservation behavior.
+- `StockUpdateLogs` now act as both the movement audit trail and the idempotency key for replayed/duplicated queue messages.
+
+
+## 2026-05-24T14:24:58.550-03:00 — Merged from inbox: cinnamon-image-urls.md
+
+# Cinnamon Decision — 2026-05-24T14:24:58.550-03:00 — Product image URLs via Unsplash CDN
+
+## Context
+
+All 16 seeded products had `NULL` ImageUrl values in Azure SQL (`OutdoorsShopDB`). The frontend product cards render `<img src={product.imageUrl}>`, so null URLs produced broken image icons.
+
+## Decision
+
+Use **Unsplash free-tier CDN URLs** (`https://images.unsplash.com/photo-{id}?w=400&fit=crop&auto=format`) for all 16 product images rather than uploading owned blobs to `stoutdoorsdev`.
+
+## Why this option
+
+- **Zero cost & zero infra overhead:** Unsplash Source URLs are publicly accessible, no auth required, and served from a global CDN — no blob upload step needed.
+- **Variety per product:** A unique, category-relevant photo was picked per product (no duplicates).
+- **Reversible:** If the team ever wants owned images in `stoutdoorsdev/product-images`, it's a 16-row UPDATE away.
+
+## Image mapping
+
+| ProductID | Name | Unsplash Photo ID |
+|-----------|------|-------------------|
+| 1 | Alpine Base Camp Tent 4P | photo-1504280390367-361c6d9f38f4 |
+| 2 | TrailRest Mummy Sleeping Bag -10C | photo-1544348817-5f2cf14b88c8 |
+| 3 | Summit Lite Backpacking Stove | photo-1563299796-17596ed6b017 |
+| 4 | NightTrail 350 Headlamp | photo-1414694762283-acccc27bca85 |
+| 5 | Trailblazer Carbon Trekking Poles | photo-1551632811-561732d1e306 |
+| 6 | Granite Ridge Hiking Boots Mid | photo-1542401886-65d6c61db217 |
+| 7 | HydroFlow 3L Hydration Pack | photo-1538635993-85060e52fd8a |
+| 8 | TrailNavigator GPS 500 | photo-1532274402911-5a369e4c4bb5 |
+| 9 | VertexMTB Trail Helmet | photo-1541625602330-2277a4c46182 |
+| 10 | GripForce Cycling Gloves Full-Finger | photo-1558981403-c5f9899a28bc |
+| 11 | LumaBolt 1000 Bike Light Set | photo-1485965120184-e220f721d03e |
+| 12 | TrailFix Pro Bike Repair Kit | photo-1571068316344-75bc76f77890 |
+| 13 | Ascent Pro Climbing Harness | photo-1522163182402-834f871fd851 |
+| 14 | Summit Chalk Bag with Belt | photo-1564760055775-d63b17a55c44 |
+| 15 | VértexEdge Rock Climbing Shoes | photo-1574397113396-4369b6dc0dbc |
+| 16 | IronLink Carabiner Set 6-pack | photo-1599508704512-2f19efd1e35f |
+
+## Implementation
+
+- Created `scripts/update-image-urls.sql` — runs 16 UPDATE statements and a verification SELECT.
+- Updated `scripts/seed-products.sql` — replaced NULL with the Unsplash URLs in the INSERT block so future reseeds are correct.
+- Ran the UPDATE script via `sqlcmd` against `azure-sql-pampa.database.windows.net / OutdoorsShopDB`.
+- Required opening firewall rule `AllowCinnamonAgent` in resource group `AzureSqlRg` (not `rg-outdoors-dev` — that's where the Azure SQL server lives).
+
+## Verification
+
+`GET https://app-outdoors-api-dev.azurewebsites.net/api/v1/products` returned 16 products, all with non-null `imageUrl`.
+
+## Consequences
+
+- Product images are served from Unsplash CDN — any future Unsplash rate-limiting or takedown would break them.
+- For production, consider uploading owned images to `stoutdoorsdev/product-images` and pointing `ImageUrl` there.
+
+
+## 2026-05-24T14:43:10-03:00 — Merged from inbox: cinnamon-role-seeding-fix.md
+
+# Cinnamon Decision — 2026-05-24T14:43:10-03:00 — Identity Role Seeding on API Startup
+
+## Context
+
+`POST /api/v1/auth/register` returned **500** with `"Role CUSTOMER does not exist."` because the
+`AspNetRoles` table in Azure SQL (`OutdoorsShopDB`) was empty. `AddToRoleAsync("Customer")` fails
+at runtime if the role row has never been inserted. There was no mechanism to seed the roles.
+
+## Decision
+
+Seed ASP.NET Core Identity roles (`Administrator`, `Customer`) at application startup inside
+`src/OutdoorsShop.Api/Program.cs`, immediately before `app.Run()`, using `RoleManager<IdentityRole>`.
+The seeding block is idempotent (checks `RoleExistsAsync` before `CreateAsync`).
+
+A minimal-API health endpoint `GET /api/health` → `200 {"status":"ok"}` was also added to satisfy
+Creta's test requirement and fix the pre-existing 404 on that path.
+
+## Changes Applied
+
+- `src/OutdoorsShop.Api/Program.cs` — added `using Microsoft.AspNetCore.Identity` and two blocks:
+  1. `app.MapGet("/api/health", ...)` — anonymous health endpoint
+  2. `using (var scope = ...) { ... RoleManager seeding loop ... }` — runs before `app.Run()`
+
+## Deployment
+
+- Published API for Linux (`-r linux-x64 --self-contained false /p:UseAppHost=false`)
+- Zipped using `[System.IO.Compression.ZipFile]::CreateFromDirectory` (not `Compress-Archive -Path *`
+  — the wildcard form on Windows PowerShell produced a broken 3-entry archive missing the `.runtimeconfig.json`)
+- Uploaded to `stoutdoorsdev/webapp-releases/api-dev.zip`, restarted `app-outdoors-api-dev`
+
+## Verification
+
+| Endpoint | Expected | Actual |
+|---|---|---|
+| `GET /api/health` | 200 `{"status":"ok"}` | ✅ 200 |
+| `POST /api/v1/auth/register` | 200 + JWT | ✅ 200 |
+| `POST /api/v1/auth/login` | 200 + JWT | ✅ 200 |
+
+## Consequences
+
+- Roles are created once on first boot; subsequent restarts skip the `CreateAsync` call (idempotent).
+- Any future role additions (e.g. `Manager`) should be appended to the same seeding array.
+- `Compress-Archive -Path *` must **not** be used for App Service zip packages — use `ZipFile.CreateFromDirectory` instead.
+
+
 
 ### 2026-05-23T23:51:06-03:00: User directive
 **By:** Jorgito (via Copilot)
@@ -1164,4 +1339,137 @@ Role seeding confirmed working: `Customer` role is present in the JWT after firs
 ### No regressions found
 All steps that previously passed (1, 2, 3, 6, 7, 8) continue to pass.
 
+## 2026-05-27T18:30:18Z — Merged from inbox: cinnamon-azure-feature-ideas.md
+
+# Cinnamon — 2026-05-27T15:30:18.727-03:00 — Azure Functions / Queue / Storage feature ideas
+
+## Summary
+I inspected existing Functions and patterns (stock-updates queue consumer, payment-confirmations queue consumer, seasonal discount timer, Blob upload patterns and DI for EF Core). Below are 3 practical features that reuse current patterns and need modest changes.
+
+## Proposed features
+
+1) Order receipt generation (recommended)
+- Flow: API or PaymentConfirmation publishes a `receipt-requests` queue message after payment success → ReceiptGenerationFunction (QueueTrigger) reads order from DB, renders PDF/HTML receipt, uploads to private blob container `order-receipts`, updates Order. Optionally generate short-lived SAS and send link via email or write to order record.
+- Reuses: DbContext injection in Functions, BlobServiceClient patterns, queue contract style already used by `payment-confirmations` and `stock-updates`.
+- Effort: small (new queue + new Function + small upload service + wiring in PaymentConfirmation or OrderService).
+- Showcases: Queue + Function + Blob Storage together.
+
+2) Inventory CSV export (timer or on-demand)
+- Flow: Timer-triggered or HTTP-triggered function queries inventory, writes CSV/Excel to `exports/inventory-YYYYMMDD.csv` in blob storage. Optionally enqueue a `report-ready` message for UI to pick up.
+- Reuses: Timer trigger pattern (SeasonalDiscount), DbContext, Blob upload skill.
+- Effort: modest (new Function, CSV writer, container creation).
+
+3) Image processing pipeline (thumbnail generation)
+- Flow: Use a BlobTrigger Function (on `product-images` container) to create thumbnails and store them under `product-images/thumbs/{productId}/` or update product metadata with thumbnail URL.
+- Reuses: Blob patterns and blob container naming; requires adding BlobTrigger to Functions (isolated worker supports blob trigger) and a small image-resize dependency.
+- Effort: moderate (adding BlobTrigger experience and image library dependency).
+
+## Recommended next work (easiest high-value)
+Implement (1) Order receipt generation. It provides immediate product value (receipts), demonstrates Queue + Function + Blob in a single user story, and reuses existing DI/Blob/Queue patterns. Steps:
+- Add `receipt-requests` queue producer in PaymentConfirmationFunction (or OrderService) after marking payment success.
+- Add `ReceiptGenerationFunction` (QueueTrigger) that loads order, renders receipt (simple HTML -> store as .html or use wkhtmltopdf if available), uploads to `order-receipts` container with `PublicAccessType.None`, and updates Order with blob path and/or SAS.
+- Add unit tests in `tests/OutdoorsShop.Functions.Tests` for the new Function using the established fake TimeProvider and in-memory DB patterns.
+
+## Implementation notes / files to change
+- `src/OutdoorsShop.Functions/Functions/ReceiptGenerationFunction.cs` (new)
+- `src/OutdoorsShop.Functions/OutdoorsShop.Functions.csproj` (add reference if needed)
+- `src/OutdoorsShop.Api` or `Infrastructure` — add `IReceiptQueuePublisher` + implementation, and call after payment success (or within `PaymentConfirmationFunction` flows as queue producer).
+- DI: add BlobServiceClient to Functions `Program.cs` (pattern exists in SKILL.md)
+- Tests: `tests/OutdoorsShop.Functions.Tests` add ReceiptGenerationFunctionTests
+
+## Questions / follow-ups for team
+- PDF vs HTML receipts? (HTML is quickest; PDF conversion needs native tooling or third-party library). I recommend HTML-first with future PDF conversion.
+- Do receipts need to be publicly accessible (SAS) or private behind API? I recommend private blobs + SAS per-request.
+
+---
+
+If approved I will implement the ReceiptGenerationFunction and the minimal queue producer wiring in PaymentConfirmation or OrderService.
+
+## 2026-05-27T18:30:18Z — Merged from inbox: toru-azure-feature-ideas.md
+
+---
+author: Toru
+date: 2026-05-27T15:30:18.727-03:00
+---
+
+Subject: Proposed Azure Functions + Queue + Storage features for OutdoorsShop
+
+Context
+- Purpose: Provide practical feature ideas that exercise Azure Functions, Storage Queue, and Blob Storage while delivering product value.
+
+Proposals
+
+1) Asynchronous Product Image Pipeline (recommended)
+- What: When a user uploads product images, frontend writes the file to the "stoutdoorsdev" Blob container and adds a message to a Storage Queue. A queue-triggered Azure Function pulls the blob, generates thumbnails (multiple sizes), optimizes and writes processed images back to blob storage under /images/{productId}/, then updates product metadata via API or emits an event.
+- Business fit: High — improves product display, SEO, page load, and conversion.
+- Implementation effort: Medium — requires image processing library (ImageSharp), wiring blob/queue access, and small API metadata update.
+
+2) Order Receipt Generation and Archival
+- What: After order completion, API enqueues an order-id message. A queue-triggered Function generates a PDF receipt, stores it in blob storage under /receipts/{orderId}.pdf, and optionally emails link to customer.
+- Business fit: Medium-High — reliable receipts and archival; useful for audit and customer support.
+- Implementation effort: Low-Medium — PDF library + storage write; optional email adds SMTP/SendGrid config.
+
+3) Supplier Feed Ingestion and Catalog Sync
+- What: Suppliers drop CSV/catalog files into a supplier-feeds blob container. A blob-created event (or queue) triggers a Function that parses the feed, enqueues per-product processing messages, and worker Functions update the catalog in Azure SQL.
+- Business fit: Medium — automates supplier updates; useful for inventory-heavy sellers.
+- Implementation effort: High — parsing, validation, deduplication, SQL transactions, and supplier mapping.
+
+Ranking (by business impact / effort)
+- 1) Product Image Pipeline — Best balance: High impact, Medium effort.
+- 2) Order Receipt Generation — Quick win: Medium-High impact, Lower effort.
+- 3) Supplier Feed Ingestion — High utility for scale, but high effort and integration risk.
+
+Recommendation
+- Implement the Asynchronous Product Image Pipeline first. It exercises Azure Functions, Storage Queue, and Blob Storage; delivers visible UX improvements; and is straightforward to scope for a PoC.
+
+Next steps (minimal MVP)
+- Provision resources: Storage Account (stoutdoorsdev) containers: images, receipts, supplier-feeds; Storage Queue: processing-queue.
+- Create Azure Function (queue trigger) in Functions project: ProcessImageMessage -> fetch blob, generate thumbnails (64, 256, 1024), write back.
+- Add small API endpoint or message to update product image URLs in database.
+- CI: extend existing Functions project pipeline; add localdev settings for Azure Storage emulator or Azurite.
+
+Assignments
+- Implementation: Cinnamon (image processing code, Function wiring)
+- Tests: Creta (integration tests around blob writes and metadata updates)
+- Infra: Toru (Bicep module and minimal RBAC/storage policy)
+
+Notes
+- Use existing "stoutdoorsdev" storage account; reuse naming and CORS rules in infra.
+- Keep functions cold-start friendly: small, single-responsibility worker per queue message.
+
+Decision made by Toru on 2026-05-27T15:30:18.727-03:00
+
+
+
+
+## 2026-05-27T20:47:27Z — Merged from inbox: cinnamon-backend-deploy-checklist.md
+
+
+# cinnamon-backend-deploy-checklist
+
+date: 2026-05-27T17:36:03.919-03:00
+
+Summary: Practical checklist to finish deployment of OutdoorsShop backend API (CI exists; no deploy step yet).
+
+Checklist (do these in order):
+
+1. Add a deployment job to .github/workflows/backend.yml that logs into Azure and deploys the Web App package. Use `azure/login` + `azure/webapps-deploy` or `actions/upload-artifact` + `az webapp deploy`. Create a Service Principal and save its JSON as `AZURE_CREDENTIALS` in the repo secrets. (status: MISSING)
+
+2. Ensure Key Vault secrets referenced in App Service settings exist and are correct: `sql-connection-string`, `storage-connection-string`, `jwt-secret`. Verify the Key Vault references are the app settings (they currently are); if secrets are missing, add them to kv-outdoors-dev. (status: PARTIALLY DONE — references present; verify secret values)
+
+3. Remove the malformed App Service app setting entry (the separate plain-name/value pair for AzureStorage__ConnectionString) — it may override the Key Vault reference. Keep only the Key Vault reference `ConnectionStrings__DefaultConnection = @Microsoft.KeyVault(...)` style. (status: ACTION REQUIRED — malformed setting present)
+
+4. Run EF Core migrations against the Azure SQL DB after deployment (or add a pipeline step to apply migrations). Use `dotnet ef database update --connection "<connection-string>"` or run migrations from app startup with caution. Ensure SQL firewall and credentials allow migration. (status: MISSING — migrations not applied remotely)
+
+5. Confirm Azure Storage: containers (`product-images`, `order-receipts`, `reports`) and queues (`stock-updates`, `receipt-requests`) exist in the target storage account. Create them if missing. (status: UNKNOWN — app settings reference containers; verify existence)
+
+6. Verify WEBSITE_RUN_FROM_PACKAGE and other run settings in App Service (already set). Confirm the app's Managed Identity or Key Vault access policy allows resolving Key Vault references from the App Service. (status: DONE for WEBSITE_RUN_FROM_PACKAGE; verify Key Vault access policy)
+
+7. Deploy: push a PR with the workflow change or merge to main/dev; after deploy, smoke-test critical endpoints (health, auth, product list, receipt URL). Apply migration if not automated. (status: MISSING — deploy job not merged)
+
+Notes:
+- The malformed app setting (name/value) must be removed or corrected: it can override the intended Key Vault-based connection string and cause failures.
+- Keep secrets only in Key Vault or GitHub Secrets; do not store DB credentials in App Service plain settings.
+
+Cinnamon
 

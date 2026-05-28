@@ -1,8 +1,11 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using OutdoorsShop.Core.Entities;
 using OutdoorsShop.Core.Enums;
+using OutdoorsShop.Core.Interfaces;
+using OutdoorsShop.Core.Messages;
 using OutdoorsShop.Functions.Functions;
 using OutdoorsShop.Infrastructure.Data;
 using System.Text.Json;
@@ -87,6 +90,10 @@ public class PaymentConfirmationFunctionTests
     {
         await using var db = CreateDbContext("payment-success-status");
         await SeedOrderAsync(db, orderId: 1, customerId: 1, (productId: 10, qty: 2));
+        var receiptQueuePublisher = new Mock<IReceiptQueuePublisher>();
+        receiptQueuePublisher
+            .Setup(publisher => publisher.EnqueueAsync(It.IsAny<ReceiptGenerationMessage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         var message = new PaymentConfirmationMessage(
             OrderId: 1,
@@ -95,7 +102,7 @@ public class PaymentConfirmationFunctionTests
             Amount: 100m,
             ProcessedAt: DateTimeOffset.UtcNow);
 
-        var function = new PaymentConfirmationFunction(db, NullLogger<PaymentConfirmationFunction>.Instance);
+        var function = new PaymentConfirmationFunction(db, receiptQueuePublisher.Object, NullLogger<PaymentConfirmationFunction>.Instance);
         await function.Run(Serialize(message));
 
         var order = await db.Orders.FindAsync(1);
@@ -107,6 +114,10 @@ public class PaymentConfirmationFunctionTests
     {
         await using var db = CreateDbContext("payment-success-reference");
         await SeedOrderAsync(db, orderId: 2, customerId: 1, (productId: 11, qty: 1));
+        var receiptQueuePublisher = new Mock<IReceiptQueuePublisher>();
+        receiptQueuePublisher
+            .Setup(publisher => publisher.EnqueueAsync(It.IsAny<ReceiptGenerationMessage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         var processedAt = DateTimeOffset.UtcNow;
         var message = new PaymentConfirmationMessage(
@@ -116,13 +127,22 @@ public class PaymentConfirmationFunctionTests
             Amount: 50m,
             ProcessedAt: processedAt);
 
-        var function = new PaymentConfirmationFunction(db, NullLogger<PaymentConfirmationFunction>.Instance);
+        var function = new PaymentConfirmationFunction(db, receiptQueuePublisher.Object, NullLogger<PaymentConfirmationFunction>.Instance);
         await function.Run(Serialize(message));
 
         var order = await db.Orders.FindAsync(2);
         order!.PaymentReference.Should().Be("PAY-XYZ-123");
         order.PaymentStatus.Should().Be(PaymentStatus.Confirmed);
         order.PaidAt.Should().Be(processedAt);
+
+        receiptQueuePublisher.Verify(
+            publisher => publisher.EnqueueAsync(
+                It.Is<ReceiptGenerationMessage>(queued =>
+                    queued.OrderId == 2 &&
+                    queued.PaymentReference == "PAY-XYZ-123" &&
+                    queued.ReceiptBlobName == "orders/2/receipt.html"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -130,6 +150,7 @@ public class PaymentConfirmationFunctionTests
     {
         await using var db = CreateDbContext("payment-failed-status");
         await SeedOrderAsync(db, orderId: 3, customerId: 1, (productId: 12, qty: 3));
+        var receiptQueuePublisher = new Mock<IReceiptQueuePublisher>();
 
         var message = new PaymentConfirmationMessage(
             OrderId: 3,
@@ -138,18 +159,23 @@ public class PaymentConfirmationFunctionTests
             Amount: 150m,
             ProcessedAt: DateTimeOffset.UtcNow);
 
-        var function = new PaymentConfirmationFunction(db, NullLogger<PaymentConfirmationFunction>.Instance);
+        var function = new PaymentConfirmationFunction(db, receiptQueuePublisher.Object, NullLogger<PaymentConfirmationFunction>.Instance);
         await function.Run(Serialize(message));
 
         var order = await db.Orders.FindAsync(3);
         order!.Status.Should().Be(OrderStatus.Cancelled);
         order.PaymentStatus.Should().Be(PaymentStatus.Failed);
+
+        receiptQueuePublisher.Verify(
+            publisher => publisher.EnqueueAsync(It.IsAny<ReceiptGenerationMessage>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
     public async Task Run_RestoresInventory_OnFailedPayment()
     {
         await using var db = CreateDbContext("payment-failed-inventory");
+        var receiptQueuePublisher = new Mock<IReceiptQueuePublisher>();
         // seed: product 20 with 5 units remaining
         await SeedOrderAsync(db, orderId: 4, customerId: 1, (productId: 20, qty: 5));
 
@@ -160,7 +186,7 @@ public class PaymentConfirmationFunctionTests
             Amount: 250m,
             ProcessedAt: DateTimeOffset.UtcNow);
 
-        var function = new PaymentConfirmationFunction(db, NullLogger<PaymentConfirmationFunction>.Instance);
+        var function = new PaymentConfirmationFunction(db, receiptQueuePublisher.Object, NullLogger<PaymentConfirmationFunction>.Instance);
         await function.Run(Serialize(message));
 
         // qty was 5, order had qty=5, restore should bring it to 10
@@ -174,6 +200,7 @@ public class PaymentConfirmationFunctionTests
     {
         await using var db = CreateDbContext("payment-pending");
         await SeedOrderAsync(db, orderId: 5, customerId: 1, (productId: 30, qty: 1));
+        var receiptQueuePublisher = new Mock<IReceiptQueuePublisher>();
 
         var message = new PaymentConfirmationMessage(
             OrderId: 5,
@@ -182,7 +209,7 @@ public class PaymentConfirmationFunctionTests
             Amount: 50m,
             ProcessedAt: DateTimeOffset.UtcNow);
 
-        var function = new PaymentConfirmationFunction(db, NullLogger<PaymentConfirmationFunction>.Instance);
+        var function = new PaymentConfirmationFunction(db, receiptQueuePublisher.Object, NullLogger<PaymentConfirmationFunction>.Instance);
         await function.Run(Serialize(message));
 
         var order = await db.Orders.FindAsync(5);
@@ -195,6 +222,7 @@ public class PaymentConfirmationFunctionTests
     public async Task Run_HandlesOrderNotFound_Gracefully()
     {
         await using var db = CreateDbContext("payment-order-not-found");
+        var receiptQueuePublisher = new Mock<IReceiptQueuePublisher>();
 
         var message = new PaymentConfirmationMessage(
             OrderId: 9999,
@@ -203,7 +231,7 @@ public class PaymentConfirmationFunctionTests
             Amount: 100m,
             ProcessedAt: DateTimeOffset.UtcNow);
 
-        var function = new PaymentConfirmationFunction(db, NullLogger<PaymentConfirmationFunction>.Instance);
+        var function = new PaymentConfirmationFunction(db, receiptQueuePublisher.Object, NullLogger<PaymentConfirmationFunction>.Instance);
 
         // Should complete without throwing
         var act = async () => await function.Run(Serialize(message));
@@ -214,8 +242,9 @@ public class PaymentConfirmationFunctionTests
     public async Task Run_HandlesInvalidJson_Gracefully()
     {
         await using var db = CreateDbContext("payment-invalid-json");
+        var receiptQueuePublisher = new Mock<IReceiptQueuePublisher>();
 
-        var function = new PaymentConfirmationFunction(db, NullLogger<PaymentConfirmationFunction>.Instance);
+        var function = new PaymentConfirmationFunction(db, receiptQueuePublisher.Object, NullLogger<PaymentConfirmationFunction>.Instance);
 
         var act = async () => await function.Run("{ this is not valid json !!!");
         await act.Should().NotThrowAsync();

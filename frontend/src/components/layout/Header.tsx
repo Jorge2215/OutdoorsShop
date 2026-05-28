@@ -27,6 +27,7 @@ const adminLinks: NavLinkItem[] = [
   { label: 'Products', to: '/admin/products' },
   { label: 'Inventory', to: '/admin/inventory' },
   { label: 'Orders', to: '/admin/orders' },
+  { label: 'Reports', to: '/admin/reports' },
 ]
 
 function linkClass(isActive: boolean) {
@@ -167,4 +168,3 @@ export function Header() {
     </header>
   )
 }
-

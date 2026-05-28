@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using OutdoorsShop.Core.Entities;
+using OutdoorsShop.Core.Messages;
 using OutdoorsShop.Functions.Functions;
 using OutdoorsShop.Infrastructure.Data;
 using System.Text.Json;
@@ -189,6 +190,40 @@ public class StockUpdateFunctionTests
 
         var act = async () => await function.Run("not valid json at all");
         await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task Run_SkipsDuplicateMessage_WhenMatchingLogAlreadyExists()
+    {
+        await using var db = CreateDbContext("stock-duplicate");
+        await SeedInventoryAsync(db, productId: 6, qty: 12);
+
+        var updatedAt = DateTimeOffset.UtcNow;
+        db.StockUpdateLogs.Add(new StockUpdateLog
+        {
+            Id = Guid.NewGuid(),
+            ProductId = 6,
+            QuantityDelta = -2,
+            ResultingQuantity = 10,
+            Reason = "OrderPlacement",
+            Notes = "Order stock deduction",
+            UpdatedAt = updatedAt
+        });
+        await db.SaveChangesAsync();
+
+        var message = new StockUpdateMessage(
+            ProductId: 6,
+            QuantityDelta: -2,
+            Reason: "OrderPlacement",
+            Notes: "Order stock deduction",
+            UpdatedAt: updatedAt);
+
+        var function = new StockUpdateFunction(db, NullLogger<StockUpdateFunction>.Instance);
+        await function.Run(Serialize(message));
+
+        var inventory = await db.Inventory.FindAsync(6);
+        inventory!.QuantityAvailable.Should().Be(12);
+        (await db.StockUpdateLogs.CountAsync()).Should().Be(1);
     }
 }
 

@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "BBvBrSirVLQ=",
+  "dgSpecHash": "ogAEZ6dFZTs=",
   "success": true,
   "projectFilePath": "C:\\Users\\Jorgito\\source\\repos\\OutdoorsShop\\src\\OutdoorsShop.Infrastructure\\OutdoorsShop.Infrastructure.csproj",
   "expectedPackageFiles": [
@@ -8,6 +8,7 @@
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.identity\\1.14.2\\azure.identity.1.14.2.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.blobs\\12.28.0\\azure.storage.blobs.12.28.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.common\\12.27.0\\azure.storage.common.12.27.0.nupkg.sha512",
+    "C:\\Users\\Jorgito\\.nuget\\packages\\azure.storage.queues\\12.22.0\\azure.storage.queues.12.22.0.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\microsoft.aspnetcore.cryptography.internal\\10.0.8\\microsoft.aspnetcore.cryptography.internal.10.0.8.nupkg.sha512",
     "C:\\Users\\Jorgito\\.nuget\\packages\\microsoft.aspnetcore.cryptography.keyderivation\\10.0.8\\microsoft.aspnetcore.cryptography.keyderivation.10.0.8.nupkg.sha512",

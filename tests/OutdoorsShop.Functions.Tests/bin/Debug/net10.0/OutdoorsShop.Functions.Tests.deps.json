@@ -82,15 +82,15 @@
           }
         }
       },
-      "Azure.Storage.Queues/12.21.0": {
+      "Azure.Storage.Queues/12.22.0": {
         "dependencies": {
           "Azure.Storage.Common": "12.27.0",
           "System.Memory.Data": "10.0.3"
         },
         "runtime": {
-          "lib/net6.0/Azure.Storage.Queues.dll": {
-            "assemblyVersion": "12.21.0.0",
-            "fileVersion": "12.2100.24.56203"
+          "lib/net8.0/Azure.Storage.Queues.dll": {
+            "assemblyVersion": "12.22.0.0",
+            "fileVersion": "12.2200.25.16105"
           }
         }
       },
@@ -231,7 +231,7 @@
       },
       "Microsoft.Azure.Functions.Worker.Extensions.Storage.Queues/5.5.4": {
         "dependencies": {
-          "Azure.Storage.Queues": "12.21.0",
+          "Azure.Storage.Queues": "12.22.0",
           "Microsoft.Azure.Functions.Worker.Core": "2.52.0",
           "Microsoft.Azure.Functions.Worker.Extensions.Abstractions": "1.3.0"
         },
@@ -1014,6 +1014,7 @@
       "OutdoorsShop.Infrastructure/1.0.0": {
         "dependencies": {
           "Azure.Storage.Blobs": "12.28.0",
+          "Azure.Storage.Queues": "12.22.0",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "10.0.8",
           "Microsoft.Data.SqlClient": "6.1.1",
           "Microsoft.EntityFrameworkCore.SqlServer": "10.0.8",
@@ -1069,12 +1070,12 @@
       "path": "azure.storage.common/12.27.0",
       "hashPath": "azure.storage.common.12.27.0.nupkg.sha512"
     },
-    "Azure.Storage.Queues/12.21.0": {
+    "Azure.Storage.Queues/12.22.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-4Ql71evO/iosdzZD8KFKBByVyvCXvVeC979w8JOdT7UdStncBg4BbnZREq3B56ud4paUgKdPv45qEasTYUsH2w==",
-      "path": "azure.storage.queues/12.21.0",
-      "hashPath": "azure.storage.queues.12.21.0.nupkg.sha512"
+      "sha512": "sha512-HPQgOlfH+rJ4CL4V8ePFnsT/KKnvLU35ytxC3fsTTqOazhQ0593C0aPVu258DRN8bQCbx4OpNpjtiO9czDy3VQ==",
+      "path": "azure.storage.queues/12.22.0",
+      "hashPath": "azure.storage.queues.12.22.0.nupkg.sha512"
     },
     "Castle.Core/5.1.1": {
       "type": "package",

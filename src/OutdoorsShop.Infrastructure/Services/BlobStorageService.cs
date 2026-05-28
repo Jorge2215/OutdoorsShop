@@ -53,6 +53,14 @@ public class BlobStorageService : IBlobStorageService
         await blobClient.DeleteIfExistsAsync();
     }
 
+    public async Task<bool> ExistsAsync(string containerName, string blobName)
+    {
+        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+        var blobClient = containerClient.GetBlobClient(blobName);
+        var response = await blobClient.ExistsAsync();
+        return response.Value;
+    }
+
     public Task<string> GetSasUrlAsync(string containerName, string blobName, TimeSpan expiry)
     {
         var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);

@@ -1,4 +1,5 @@
-import { AlertTriangle, Boxes, PackageCheck, ScrollText } from 'lucide-react'
+import { AlertTriangle, Boxes, FileSpreadsheet, PackageCheck, ScrollText } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { inventoryApi } from '../../api/inventory.api'
 import { ordersApi } from '../../api/orders.api'
 import { productsApi } from '../../api/products.api'
@@ -44,6 +45,25 @@ export default function AdminDashboardPage() {
                 <p className="mt-3 font-heading text-5xl text-crimson">{item.value}</p>
               </Card>
             ))}
+          </div>
+
+          <div className="mt-6">
+            <Card className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <FileSpreadsheet className="mt-1 h-5 w-5 text-gold" />
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-[0.24em] text-ink/55">Async exports</p>
+                  <h2 className="mt-2 text-2xl text-ink">Queue report generation and return later for downloads</h2>
+                  <p className="mt-2 text-sm text-ink/65">Use the reports workspace to request CSV or Excel exports for orders and inventory, then poll for completion.</p>
+                </div>
+              </div>
+              <Link
+                to="/admin/reports"
+                className="rounded-full border border-gold/45 bg-white/70 px-5 py-3 text-sm font-bold uppercase tracking-[0.2em] text-ink transition hover:border-crimson hover:text-crimson"
+              >
+                Open reports
+              </Link>
+            </Card>
           </div>
 
           <div className="mt-10 grid gap-8 lg:grid-cols-[0.95fr,1.05fr]">
@@ -94,4 +114,3 @@ export default function AdminDashboardPage() {
     </div>
   )
 }
-

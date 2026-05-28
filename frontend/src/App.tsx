@@ -61,6 +61,7 @@ const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage')
 const AdminProductsPage = lazy(() => import('./pages/admin/AdminProductsPage'))
 const AdminInventoryPage = lazy(() => import('./pages/admin/AdminInventoryPage'))
 const AdminOrdersPage = lazy(() => import('./pages/admin/AdminOrdersPage'))
+const AdminReportsPage = lazy(() => import('./pages/admin/AdminReportsPage'))
 
 function FullScreenLoader() {
   return (
@@ -188,6 +189,14 @@ function AppShell() {
               </AdminRoute>
             }
           />
+          <Route
+            path="/admin/reports"
+            element={
+              <AdminRoute>
+                <AdminReportsPage />
+              </AdminRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -205,4 +214,3 @@ export default function App() {
     </AppErrorBoundary>
   )
 }
-

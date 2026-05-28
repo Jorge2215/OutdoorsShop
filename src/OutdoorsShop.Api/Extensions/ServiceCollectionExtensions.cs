@@ -95,6 +95,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IStockUpdateQueuePublisher, StockUpdateQueuePublisher>();
+        services.AddScoped<IReceiptQueuePublisher, ReceiptQueuePublisher>();
+        services.AddScoped<IReportExportQueuePublisher, ReportExportQueuePublisher>();
+        services.AddScoped<IReportFileService, ReportFileService>();
+        services.AddScoped<IReportExportRequestService, ReportExportRequestService>();
 
         return services;
     }
