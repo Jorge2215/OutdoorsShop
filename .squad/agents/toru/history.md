@@ -82,3 +82,9 @@
   - Approach: Mirror existing Functions workflow — dotnet publish -> zip -> azure/login@v2 -> az webapp deployment source config-zip --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/api.zip --timeout 600.
   - Secrets required in repository: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`. Also ensure `SQL_ADMIN_PASSWORD` / Key Vault references are present as needed.
   - Owner: Cinnamon to implement the change in `backend.yml` and validate deployment to dev. Keep deploy step gated by `if: github.event_name == 'push'` and environment mapping identical to `functions.yml`.
+
+- **2026-05-28T00:25:21.638-03:00 — Async export routes missing live due to skipped API deploy, not missing source:**
+  - `origin/dev` already contains the async report-request controller actions and EF migration from commit `0809095`.
+  - The latest dev push run for `backend.yml` (`d01e899`) failed at `dotnet publish` with `NETSDK1047` because the workflow restored without the `linux-x64` runtime target, so the deploy job was skipped.
+  - Result: `app-outdoors-api-dev` kept serving older App Service content, which explains Swagger showing only legacy report routes and `404` on `/api/v1/reports/requests*`.
+  - Shortest safe recovery: publish/deploy the current API build with a runtime-aware restore (or remove `--no-restore` for publish), then verify Swagger includes the request routes before moving on to DB/function checks.

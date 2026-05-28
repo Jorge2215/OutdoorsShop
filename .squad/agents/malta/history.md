@@ -17,6 +17,8 @@
 
 ## Learnings
 
+- 2026-05-28T00:21:12.394-03:00: The Queue Export CTA lives in `frontend/src/pages/admin/AdminReportsPage.tsx` and submits `reportsApi.createRequest(...)` to `POST /api/v1/reports/requests`. The visible `Report action failed / Request failed` banner is the generic frontend fallback when that POST returns a non-2xx response whose payload does not expose a usable `message`, `title`, or validation `errors` field (and `statusText` is empty), so it points to an unhelpful error response rather than the expected DTO shape. The current backend DTO remains broadly compatible with the page because the client already maps `requestedAt`, `completedAt`, and `downloadUrl`, but it does not provide the `updatedAt` or nested `download` shape the UI prefers.
+
 - 2026-05-25T19:08:32.516-03:00: ProfilePage now owns two independent forms inside the same card: customer details still save through `customersApi.update(...)`, while password changes call `authApi.changePassword(...)` against `PUT /api/v1/users/change-password` with `{ currentPassword, newPassword, confirmNewPassword }`. Keep password validation inline (required fields, minimum 8 characters, confirmation match), show section-specific alerts, and clear the password fields after a successful change.
 - 2026-05-25T11:05:01.947-03:00: Admin catalog now requests `productsApi.list({ includeInactive: true })` so soft-deleted products stay visible to administrators. Inactive rows use muted styling plus a danger badge, and reactivation is handled through `productsApi.update(..., isActive: true)` while active products keep the soft-delete action.
 
