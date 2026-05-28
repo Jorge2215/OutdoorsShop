@@ -37,3 +37,9 @@
 - Pre-check: decisions.md was 78163 bytes and .squad/decisions/inbox/ contained 9 files.
 - Merged 10 inbox decisions into decisions.md, removed the inbox files, dropped 1 duplicate residual inbox note, wrote orchestration/session logs, and summarized oversized history files.
 - Health report: decisions.md finished at 98657 bytes; summarized histories: cinnamon.
+
+## 2026-05-28T02:00:17Z — Scribe
+
+- Recorded the AppDbContextFactory design-time configuration update in `.squad/decisions.md`.
+- Logged that design-time EF now loads appsettings, environment-specific appsettings, API user secrets, and environment variables, with no silent local SQL fallback and a clear exception on missing `DefaultConnection`.
+- Wrote matching session/orchestration entries for the validated build/tests and design-time EF info run.

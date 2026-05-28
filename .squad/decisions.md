@@ -1865,3 +1865,19 @@ Recommended next steps
 If you want me to proceed with any option and you can grant the necessary Key Vault access, I will apply the migration and report back.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+## 2026-05-28T02:00:17Z — AppDbContextFactory design-time configuration
+
+Date: 2026-05-27T23:00:17.369-03:00
+
+Decision
+- `AppDbContextFactory` design-time EF configuration must mirror application startup configuration by loading `appsettings.json`, `appsettings.{Environment}.json`, API user secrets, and environment variables before resolving `ConnectionStrings:DefaultConnection`.
+- Silent fallback to local SQL Server is removed. If `DefaultConnection` is missing, design-time EF must fail loudly with a clear exception instead of silently switching databases.
+
+Reason
+- Design-time EF commands need to target the same configured environment as the API so migrations, scaffolding, and diagnostics do not accidentally run against an unintended local database.
+- A missing connection string is a configuration error that should surface immediately and explicitly.
+
+Validation
+- Build/tests were completed successfully for the change set.
+- A design-time EF info run completed using the updated configuration path.

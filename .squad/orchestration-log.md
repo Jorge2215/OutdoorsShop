@@ -1,0 +1,1 @@
+2026-05-27: Cinnamon investigated Azure Storage Queue `stock-updates` and Function `StockUpdate`. Confirmed both order placement and admin inventory updates enqueue `StockUpdateMessage` with appropriate reasons. Function is triggered by queue, but often no-ops due to prior DB/log update in API. Function App runtime relies on correct `AzureWebJobsStorage` configuration.
