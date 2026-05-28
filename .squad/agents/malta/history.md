@@ -48,3 +48,9 @@
 ## 2026-05-28T01:15:13Z — Scribe team update
 - Merged the admin reports local-history decision into decisions.md.
 - Frontend should keep recent report request ids in browser local storage until the backend exposes a list endpoint.
+
+## Learnings
+
+- 2026-05-28T01:00:14.073-03:00: Verified the admin export flow: the AdminReportsPage calls reportsApi.createRequest which POSTs to /api/v1/reports/requests via buildApiUrl(). The effective endpoint is {VITE_API_URL}/api/v1/reports/requests (VITE_API_URL is set in frontend/.env.production). No frontend code changes required if the backend is restored to the intended base path.
+
+- 2026-05-28T01:00:14.073-03:00: Risk notes: the frontend expects cookie-based authentication (credentials: 'include') and the API to return either JSON download metadata or a direct/redirect URL. If the backend changes auth scheme, base path, or the download payload shape, the minimal fixes are: update VITE_API_URL, or adjust fetchWithAuth()/reportsApi mapping logic. Key files: frontend/src/pages/admin/AdminReportsPage.tsx, frontend/src/api/reports.api.ts, frontend/src/api/config.ts.

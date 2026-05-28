@@ -5,6 +5,16 @@
 
 ## Learnings
 
+### 2026-05-28T01:36:33.323-03:00 — Backend deploy reference comparison
+- Push run `26551166403` on commit `a5868e2` is not a true backend deploy reference: that version of `.github\workflows\backend.yml` only restored, built, and tested, so its success never exercised publish or Azure deployment.
+- Push run `26553116007` on commit `94aed83` proves the repo-side publish path is healthy: restore, build, test, linux-x64 publish, packaging, and artifact upload all succeeded before the deploy job failed at `azure/login@v2`.
+- When backend deployment is blocked only by missing Azure OIDC secrets, add an explicit workflow preflight that names the missing secret keys and states that build/publish already passed; this keeps the failure accurate without exposing or weakening secrets.
+
+### 2026-05-28T01:00:14.073-03:00 — Backend deploy blocker analysis
+- `src\OutdoorsShop.Api\Controllers\ReportsController.cs` still contains the async export request actions, but live dev Swagger at `https://app-outdoors-api-dev.azurewebsites.net/swagger/v1/swagger.json` exposes only `/api/v1/Reports/orders` and `/api/v1/Reports/inventory`, so the App Service is still on a stale API package.
+- GitHub Actions run `26553116007` for commit `94aed83` proved the repo-side workflow fix is good: restore, build, test, and linux-x64 publish all succeeded; the only failure was `azure/login@v2` in the `deploy` job because `client-id` and `tenant-id` were not supplied.
+- `backend.yml` only publishes/deploys on `push`, so a green `workflow_dispatch` run validates the code path but does not update `app-outdoors-api-dev`; recovery now depends on fixing the Azure GitHub Actions credentials and then rerunning the failed push or sending a fresh deploy-triggering push.
+
 ### 2026-05-28T00:35:13.293-03:00 — Workflow repair push handling
 - Before pushing `dev`, inspect `origin/dev..HEAD`; this branch was already ahead with two unrelated Scribe commits, so staging only `.github/workflows/backend.yml` still meant the push would carry those existing branch commits along with the new workflow repair commit.
 - For isolated operational pushes, keep unrelated working-tree edits unstaged and commit only the target file, but report any unavoidable pre-existing branch commits that ride along because they are already part of the current branch history.

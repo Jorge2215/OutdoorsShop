@@ -70,5 +70,11 @@ https://wonderful-plant-0a1ca5f0f.7.azurestaticapps.net/admin/products
 Email: admin@outdoorsshop.dev
 Password: Admin@123456
 
+##Prompt de Resliencia de  Jorgito
+Always keep track of the last 3 days of work. 
+Do not overwrite or discard previous progress. 
+Document every change in the repository and confirm alignment with the team before modifying existing code.
+
+
 ## Resume
 copilot --resume=561f7ff3-e5a1-4fa8-9a38-91908166a3d2

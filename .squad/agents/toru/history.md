@@ -6,6 +6,11 @@
 - Operational notes: Keep CORS in app config (not App Service platform); Blob static website acceptable for dev; infra details in infra/ and decisions inbox.
 
 ## Learnings
+- **2026-05-28T01:36:33.323-03:00 — Backend workflow runtime restore fix:**
+  - Diagnosed push-triggered deploy failures as a restore/publish runtime mismatch (NETSDK1047).
+  - Compared failed push and successful workflow_dispatch logs; only restore step differed.
+  - Fixed by adding `--runtime linux-x64` to restore in backend.yml, matching publish step.
+  - Documented in decisions inbox for team visibility.
 - **2026-05-27T22:06:23 — Rollout order for async report export:**
   1. Commit/push to dev triggers CI/CD for frontend and functions; backend API deploy and DB migration are manual.
   2. Verify SWA hostname, update AllowedOrigins, confirm secrets, and smoke test all components before merging to main.
