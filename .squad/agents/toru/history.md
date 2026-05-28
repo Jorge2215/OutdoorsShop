@@ -18,6 +18,17 @@
   - All required secrets must be present for CI/CD to succeed.
 
 - **2026-05-27T20:59:19 — Recovery branch consolidation:** Merged `recovery/b69d5fd-20260527-182815` into `dev`. The recovery branch had 1 squad-docs commit + an uncommitted `workflow_dispatch` addition to `backend.yml`. Both were cleanly absorbed into `dev` with no conflicts. Both recovery and backup branches deleted (local + remote). PR dev→main must be created manually by the user via GitHub web UI because the active GitHub CLI session is an Enterprise Managed User (`JVILABOA_pampa`) which cannot create PRs on personal repos.
+
+- **2026-05-28T01:00:14.073-03:00 — Dev API deploy failure & root cause:**
+  - Observed: Recent dev push runs failed in the 'build-and-test' job during 'dotnet publish' with a runtime-assets error (NETSDK1047). The publish step targets linux-x64 while the earlier 'dotnet restore' did not restore runtime-specific assets, so publish failed and the deploy job could not proceed.
+  - Impact: app-outdoors-api-dev was not updated; Swagger and the new report routes are still missing, causing 404s for /api/v1/reports/requests/*.
+  - Short recovery options (concrete):
+    1. Manual deploy now: build/publish locally and run `az webapp deployment source config-zip` against `app-outdoors-api-dev` (rg-outdoors-dev) using the current publish artifact.
+    2. Quick CI fix: re-run backend workflow after ensuring restore includes the runtime (e.g. `dotnet restore --runtime linux-x64`) or remove the `--no-restore`/use runtime-aware restore before `dotnet publish` so the publish succeeds and deploy job runs.
+    3. After deployment, verify Swagger shows the new report endpoints and run the EF migration if needed.
+
+  - Notes: Repository workflow already conditions deploy on push to 'dev' and 'main'; no environment protection blocks exist for 'dev'. Ensure required Azure secrets are present for the Azure login step to succeed.
+
 - **Pattern:** When a recovery/worktree branch diverges and only touches `.squad/` files and CI config, a direct `git merge` into dev is safe and typically conflict-free.
 
 - **2026-05-24 — SWA migration:** `Microsoft.Web/staticSites` IS available in `westus3` (previous note that it was unavailable was incorrect or region support expanded). `app-outdoorsweb-swa` provisioned successfully in `westus3`. Default hostname: `wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`.
