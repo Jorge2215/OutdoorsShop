@@ -6,6 +6,11 @@
 - Operational notes: Keep CORS in app config (not App Service platform); Blob static website acceptable for dev; infra details in infra/ and decisions inbox.
 
 ## Learnings
+- **2026-05-28T01:36:33.323-03:00 — Backend workflow runtime restore fix:**
+  - Diagnosed push-triggered deploy failures as a restore/publish runtime mismatch (NETSDK1047).
+  - Compared failed push and successful workflow_dispatch logs; only restore step differed.
+  - Fixed by adding `--runtime linux-x64` to restore in backend.yml, matching publish step.
+  - Documented in decisions inbox for team visibility.
 - **2026-05-27T22:06:23 — Rollout order for async report export:**
   1. Commit/push to dev triggers CI/CD for frontend and functions; backend API deploy and DB migration are manual.
   2. Verify SWA hostname, update AllowedOrigins, confirm secrets, and smoke test all components before merging to main.
@@ -18,6 +23,17 @@
   - All required secrets must be present for CI/CD to succeed.
 
 - **2026-05-27T20:59:19 — Recovery branch consolidation:** Merged `recovery/b69d5fd-20260527-182815` into `dev`. The recovery branch had 1 squad-docs commit + an uncommitted `workflow_dispatch` addition to `backend.yml`. Both were cleanly absorbed into `dev` with no conflicts. Both recovery and backup branches deleted (local + remote). PR dev→main must be created manually by the user via GitHub web UI because the active GitHub CLI session is an Enterprise Managed User (`JVILABOA_pampa`) which cannot create PRs on personal repos.
+
+- **2026-05-28T01:00:14.073-03:00 — Dev API deploy failure & root cause:**
+  - Observed: Recent dev push runs failed in the 'build-and-test' job during 'dotnet publish' with a runtime-assets error (NETSDK1047). The publish step targets linux-x64 while the earlier 'dotnet restore' did not restore runtime-specific assets, so publish failed and the deploy job could not proceed.
+  - Impact: app-outdoors-api-dev was not updated; Swagger and the new report routes are still missing, causing 404s for /api/v1/reports/requests/*.
+  - Short recovery options (concrete):
+    1. Manual deploy now: build/publish locally and run `az webapp deployment source config-zip` against `app-outdoors-api-dev` (rg-outdoors-dev) using the current publish artifact.
+    2. Quick CI fix: re-run backend workflow after ensuring restore includes the runtime (e.g. `dotnet restore --runtime linux-x64`) or remove the `--no-restore`/use runtime-aware restore before `dotnet publish` so the publish succeeds and deploy job runs.
+    3. After deployment, verify Swagger shows the new report endpoints and run the EF migration if needed.
+
+  - Notes: Repository workflow already conditions deploy on push to 'dev' and 'main'; no environment protection blocks exist for 'dev'. Ensure required Azure secrets are present for the Azure login step to succeed.
+
 - **Pattern:** When a recovery/worktree branch diverges and only touches `.squad/` files and CI config, a direct `git merge` into dev is safe and typically conflict-free.
 
 - **2026-05-24 — SWA migration:** `Microsoft.Web/staticSites` IS available in `westus3` (previous note that it was unavailable was incorrect or region support expanded). `app-outdoorsweb-swa` provisioned successfully in `westus3`. Default hostname: `wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`.
@@ -69,3 +85,22 @@
 ## 2026-05-28T01:24:02Z — Orchestration
 - Orchestration log written: `.squad/orchestration-log/2026-05-28T01-24-02Z-toru.md`.
 - Session log recorded: `.squad/log/2026-05-28T01-24-02Z-scribe-session.md`.
+
+## 2026-05-28T03:01:40Z — Scribe: inbox merge & orchestration
+- Merged remaining decision inbox files into `.squad/decisions/decisions.md` (3 files: cinnamon-api-deploy-workflow.md, cinnamon-design-time-ef-config.md, toru-api-deploy-workflow.md).
+- Orchestration log written: `.squad/orchestration-log/2026-05-28T03-01-40Z-toru.md`.
+- Session log recorded: `.squad/log/2026-05-28T03-01-40Z-api-deploy-workflow.md`.
+
+- **2026-05-27T23:58:19.829-03:00 — API deploy workflow decision & guidance:**
+  - Finding: repo currently lacks an automatic App Service deploy step for the Web API; backend.yml only builds and tests.
+  - Decision: Extend `.github/workflows/backend.yml` (add a publish+deploy job) rather than creating a separate workflow so CI/test and deploy live together as in other repo workflows.
+  - Naming / targets: `app-outdoors-api-dev` / `rg-outdoors-dev` for dev; `app-outdoors-api-prod` / `rg-outdoors-prod` for main/prod.
+  - Approach: Mirror existing Functions workflow — dotnet publish -> zip -> azure/login@v2 -> az webapp deployment source config-zip --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/api.zip --timeout 600.
+  - Secrets required in repository: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`. Also ensure `SQL_ADMIN_PASSWORD` / Key Vault references are present as needed.
+  - Owner: Cinnamon to implement the change in `backend.yml` and validate deployment to dev. Keep deploy step gated by `if: github.event_name == 'push'` and environment mapping identical to `functions.yml`.
+
+- **2026-05-28T00:25:21.638-03:00 — Async export routes missing live due to skipped API deploy, not missing source:**
+  - `origin/dev` already contains the async report-request controller actions and EF migration from commit `0809095`.
+  - The latest dev push run for `backend.yml` (`d01e899`) failed at `dotnet publish` with `NETSDK1047` because the workflow restored without the `linux-x64` runtime target, so the deploy job was skipped.
+  - Result: `app-outdoors-api-dev` kept serving older App Service content, which explains Swagger showing only legacy report routes and `404` on `/api/v1/reports/requests*`.
+  - Shortest safe recovery: publish/deploy the current API build with a runtime-aware restore (or remove `--no-restore` for publish), then verify Swagger includes the request routes before moving on to DB/function checks.

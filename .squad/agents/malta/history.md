@@ -17,6 +17,8 @@
 
 ## Learnings
 
+- 2026-05-28T00:21:12.394-03:00: The Queue Export CTA lives in `frontend/src/pages/admin/AdminReportsPage.tsx` and submits `reportsApi.createRequest(...)` to `POST /api/v1/reports/requests`. The visible `Report action failed / Request failed` banner is the generic frontend fallback when that POST returns a non-2xx response whose payload does not expose a usable `message`, `title`, or validation `errors` field (and `statusText` is empty), so it points to an unhelpful error response rather than the expected DTO shape. The current backend DTO remains broadly compatible with the page because the client already maps `requestedAt`, `completedAt`, and `downloadUrl`, but it does not provide the `updatedAt` or nested `download` shape the UI prefers.
+
 - 2026-05-25T19:08:32.516-03:00: ProfilePage now owns two independent forms inside the same card: customer details still save through `customersApi.update(...)`, while password changes call `authApi.changePassword(...)` against `PUT /api/v1/users/change-password` with `{ currentPassword, newPassword, confirmNewPassword }`. Keep password validation inline (required fields, minimum 8 characters, confirmation match), show section-specific alerts, and clear the password fields after a successful change.
 - 2026-05-25T11:05:01.947-03:00: Admin catalog now requests `productsApi.list({ includeInactive: true })` so soft-deleted products stay visible to administrators. Inactive rows use muted styling plus a danger badge, and reactivation is handled through `productsApi.update(..., isActive: true)` while active products keep the soft-delete action.
 
@@ -46,3 +48,9 @@
 ## 2026-05-28T01:15:13Z — Scribe team update
 - Merged the admin reports local-history decision into decisions.md.
 - Frontend should keep recent report request ids in browser local storage until the backend exposes a list endpoint.
+
+## Learnings
+
+- 2026-05-28T01:00:14.073-03:00: Verified the admin export flow: the AdminReportsPage calls reportsApi.createRequest which POSTs to /api/v1/reports/requests via buildApiUrl(). The effective endpoint is {VITE_API_URL}/api/v1/reports/requests (VITE_API_URL is set in frontend/.env.production). No frontend code changes required if the backend is restored to the intended base path.
+
+- 2026-05-28T01:00:14.073-03:00: Risk notes: the frontend expects cookie-based authentication (credentials: 'include') and the API to return either JSON download metadata or a direct/redirect URL. If the backend changes auth scheme, base path, or the download payload shape, the minimal fixes are: update VITE_API_URL, or adjust fetchWithAuth()/reportsApi mapping logic. Key files: frontend/src/pages/admin/AdminReportsPage.tsx, frontend/src/api/reports.api.ts, frontend/src/api/config.ts.

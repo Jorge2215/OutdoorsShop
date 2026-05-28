@@ -42,3 +42,5 @@ Use this when an OutdoorsShop backend feature follows the pattern: API writes a 
 - `src\\OutdoorsShop.Api\\Program.cs` and `src\\OutdoorsShop.Functions\\Program.cs` do not run `Database.Migrate()`, so migrations are a deployment step, not a startup side effect.
 - The current Function trigger listens to `report-export-requests` directly. The API publisher also supports `AzureStorage__ReportExportRequestsQueueName`, so non-default queue names are unsafe until the trigger is made configurable too.
 - `BlobClient.GenerateSasUri(...)` requires credentials capable of signing SAS tokens; a bare blob endpoint is not enough.
+- `.github\\workflows\\backend.yml` only packages and deploys the API on `push`; a green `workflow_dispatch` run proves the source builds but does not update `app-outdoors-api-dev`.
+- If the backend push run reaches `azure/login@v2` and fails saying `client-id` / `tenant-id` are missing, the blocker is GitHub Actions Azure credential configuration, not the API publish command or report-export source.

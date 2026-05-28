@@ -1,4 +1,134 @@
-﻿## 2026-05-27T20:27:02Z — Merged from inbox: cinnamon-azure-deploy-readiness.md
+﻿## 2026-05-28T03:23:16Z — Merged from inbox: malta-export-failure-path.md
+
+# Malta inbox - export failure path diagnosis
+
+- **Date:** 2026-05-28T00:21:12.394-03:00
+- **Author:** Malta (Frontend)
+- **Status:** Recommended - pending team acceptance
+- **Area:** React admin reports UX / API error contracts
+
+## Decision
+
+Treat the current `Report action failed / Request failed` queue-export banner as evidence of a non-success `POST /api/v1/reports/requests` response with an unhelpful error body, not as proof that the frontend is calling the wrong endpoint.
+
+## Why
+
+- The Queue Export button in `frontend/src/pages/admin/AdminReportsPage.tsx` calls `reportsApi.createRequest(...)`, which uses `fetchWithAuth` against `POST /api/v1/reports/requests`.
+- That banner text is set from `caughtError.message`; the exact `Request failed` string is only reached through the frontend fallback when the response is non-2xx and the payload lacks a usable `message`, `title`, or validation `errors` field (with no useful `statusText` either).
+- The backend request/download DTOs are still mostly compatible with the current mapper: the client already accepts `requestedAt`, `completedAt`, and `downloadUrl`, so a missing endpoint or a changed create-response wrapper is more suspicious than a total contract mismatch.
+
+## Impact
+
+- Backend/API diagnostics should focus first on what `POST /api/v1/reports/requests` returns on failure after deployment: empty body, opaque proxy error, or non-standard error JSON.
+- Frontend follow-up work, if needed later, should target richer error surfacing and optional handling for `updatedAt`/`downloadAvailable`, but those gaps do not explain this specific banner by themselves.
+
+
+## 2026-05-28T03:24:15Z — Merged from inbox: cinnamon-live-api-diagnosis.md
+
+# Cinnamon live API diagnosis
+
+## 2026-05-28T00:21:12.394-03:00
+
+- Verified the live dev API after deploy at `https://app-outdoors-api-dev.azurewebsites.net`.
+- `/api/health` returns OK, so the app is up.
+- Live Swagger exposes report endpoints for orders and inventory only; it does not list async report-request endpoints.
+- `POST /api/v1/reports/requests`, `GET /api/v1/reports/requests/{id}`, and `GET /api/v1/reports/requests/{id}/download` return `404 Not Found` from the live app.
+- Existing report endpoints such as `/api/v1/reports/orders` and `/api/v1/reports/inventory` return `401 Unauthorized` when called anonymously, which shows the `ReportsController` is present and auth is working on the older surface.
+- Team conclusion: the deployed dev API binary does not include the async report-request actions yet. Redeploy the API from the commit that contains the current `ReportsController` request/download actions before chasing migrations, queue wiring, or Function behavior for this specific failure.
+
+
+## 2026-05-28T03:27:18Z — Merged from inbox: cinnamon-source-route-check.md
+
+# Cinnamon — source route check
+
+## Date
+2026-05-28T00:25:21.638-03:00
+
+## Decision
+Treat the missing dev async export routes as a deployment/version mismatch, not a missing-source problem on `dev`.
+
+## Why
+- `src\OutdoorsShop.Api\Controllers\ReportsController.cs` already exposes `POST requests`, `GET requests/{id:guid}`, and `GET requests/{id:guid}/download`.
+- `src\OutdoorsShop.Infrastructure\Services\ReportExportRequestService.cs` and `src\OutdoorsShop.Infrastructure\Data\Migrations\20260528003127_AddReportExportRequests.cs` show the supporting backend implementation is also present.
+- `git log --all -- src/OutdoorsShop.Api/Controllers/ReportsController.cs src/OutdoorsShop.Infrastructure/Services/ReportExportRequestService.cs src/OutdoorsShop.Infrastructure/Data/Migrations/20260528003127_AddReportExportRequests.cs` ties that surface to commit `0809095` on `dev`.
+
+## Impact
+- Verify the dev App Service is actually running a build at or after `0809095`/current `dev` and redeploy if needed.
+- Keep the migration/application-config work separate: those affect request processing, but they do not explain 404s for missing controller routes.
+
+
+## 2026-05-28T03:29:07Z — Merged from inbox: toru-export-route-recovery.md
+
+# Toru decision — export route recovery
+
+## Date
+2026-05-28T00:25:21.638-03:00
+
+## Decision
+Classify the current dev async report-export outage as a **stale App Service deployment** caused by a failed backend publish step, not as missing source on `dev` and not as the wrong API project being deployed.
+
+## Why
+- `src\OutdoorsShop.Api\Controllers\ReportsController.cs` in the repo already contains `POST requests`, `GET requests/{id:guid}`, and `GET requests/{id:guid}/download`.
+- `src\OutdoorsShop.Infrastructure\Data\Migrations\20260528003127_AddReportExportRequests.cs` is present, so the supporting persistence work also exists in source.
+- The latest `Backend CI` push run for `dev` at commit `d01e899` failed in `Publish API artifact` with `NETSDK1047` because `dotnet publish -r linux-x64 --no-restore` was executed after a restore that did not include the `linux-x64` runtime target.
+- Because `build-and-test` failed, the `deploy` job was skipped, leaving `app-outdoors-api-dev` on the previous package. That matches live behavior: `/api/health` is up, legacy report routes exist, but async request routes return `404`.
+
+## Recovery path
+1. Confirm the source of truth is `dev`/`origin/dev`, not the currently running App Service content.
+2. Redeploy the API from the current `dev` source using a runtime-aware publish (`dotnet restore ... -r linux-x64` before publish, or publish without `--no-restore`).
+3. Verify live Swagger now lists the async request routes before investigating DB or queue execution.
+4. After the new API binary is live, apply the report-export EF migration if the request table is still missing.
+
+## Impact
+- Near-term: treat this as an API deployment recovery, not a frontend or Functions bug.
+- Permanent fix: update `.github/workflows/backend.yml` so publish uses restore assets for `linux-x64`; otherwise future pushes can pass tests yet still skip deployment.
+
+
+## 2026-05-28T03:33:04Z — Merged from inbox: cinnamon-backend-workflow-repair.md
+
+---
+date: 2026-05-28T00:30:27.267-03:00
+agent: Cinnamon
+topic: backend-workflow-publish
+---
+
+## Context
+- `.github/workflows/backend.yml` already had the intended CI/CD split: restore/build/test on PRs, then publish/deploy only on push to `dev` or `main`.
+- The API publish step used `dotnet publish ... --no-restore -r linux-x64 ...`, while the earlier restore step only restored the solution without a runtime identifier.
+
+## Decision
+- Remove `--no-restore` from the API publish step and keep the linux-x64 publish target, packaging, deploy gating, and smoke test unchanged.
+
+## Why
+- This lets `dotnet publish` restore the runtime-specific `net10.0/linux-x64` assets required for App Service packaging, avoiding the `NETSDK1047` failure that was blocking deploys and leaving Azure on a stale build.
+- It is the smallest workflow-only fix that preserves the existing CI path and the existing deployment target/output shape.
+
+
+## 2026-05-28T03:36:31Z — Merged from inbox: cinnamon-push-workflow-repair.md
+
+# Cinnamon inbox — workflow repair push
+
+- Date: 2026-05-28T00:35:13.293-03:00
+- Owner: Cinnamon
+- Area: git workflow / backend CI
+
+## Decision
+
+Push the backend workflow repair by staging and committing only `.github/workflows/backend.yml`, while leaving unrelated working-tree changes untouched.
+
+## Rationale
+
+- The requested fix was isolated to the backend GitHub Actions workflow.
+- The branch was already ahead of `origin/dev` with two existing Scribe commits, so pushing `dev` unavoidably published those prior branch commits too.
+- Keeping unrelated local edits unstaged avoided mixing build artifacts or squad notes into the workflow repair commit.
+
+## Implementation notes
+
+- Created commit `94aed83` with message `fix: repair backend workflow publish`.
+- Pushed `dev` to `origin` after confirming `.github/workflows/backend.yml` was the only staged path for the new commit.
+
+
+## 2026-05-27T20:27:02Z — Merged from inbox: cinnamon-azure-deploy-readiness.md
 
 # cinnamon-azure-deploy-readiness
 
@@ -1881,3 +2011,4 @@ Reason
 Validation
 - Build/tests were completed successfully for the change set.
 - A design-time EF info run completed using the updated configuration path.
+
