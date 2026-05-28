@@ -92,7 +92,7 @@ jobs:
       AZURE_WEBAPP_NAME: ${{ github.ref_name == 'main' && 'app-outdoors-api-prod' || 'app-outdoors-api-dev' }}
       AZURE_RESOURCE_GROUP: ${{ github.ref_name == 'main' && 'rg-outdoors-prod' || 'rg-outdoors-dev' }}
       API_HEALTH_URL: ${{ github.ref_name == 'main' && 'https://app-outdoors-api-prod.azurewebsites.net/api/health' || 'https://app-outdoors-api-dev.azurewebsites.net/api/health' }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_ID: c0fed59f-52ae-4a13-83e7-f89844c039a6
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -115,18 +115,18 @@ jobs:
             echo "### Backend deploy blocked by external Azure configuration" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Build and publish passed, but deployment cannot authenticate to Azure." >> "$GITHUB_STEP_SUMMARY"
-            echo "Missing required secret(s): ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
+            echo "Missing required configuration value(s): ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
             echo "Configure them in the '${{ github.ref_name == 'main' && 'prod' || 'dev' }}' GitHub environment or as repository secrets, then rerun the push." >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=Missing Azure deployment secrets::Build and publish succeeded, but deployment is blocked until ${missing[*]} are configured for the '${{ github.ref_name == 'main' && 'prod' || 'dev' }}' environment or repository."
+            echo "::error title=Missing Azure deployment configuration::Build and publish succeeded, but deployment is blocked until ${missing[*]} are configured for the '${{ github.ref_name == 'main' && 'prod' || 'dev' }}' environment or repository."
             exit 1
           fi
 
       - name: Azure login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy API package
         run: az webapp deployment source config-zip --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/api.zip --timeout 600
