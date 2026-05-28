@@ -1473,3 +1473,411 @@ Notes:
 
 Cinnamon
 
+## 2026-05-28T01:15:13Z — Merged from inbox: cinnamon-backend-rollout.md
+
+Date: 2026-05-27T22:00:07.784-03:00
+Owner: Cinnamon
+Area: async report export backend rollout
+
+## Decision
+
+For dev rollout, treat async report exports as a two-surface backend deploy: ship both the API (`app-outdoors-api-dev`) and Functions (`func-outdoors-dev`), apply the `AddReportExportRequests` EF migration first, and point both apps at the same Azure SQL database and same Storage account.
+
+## Rationale
+
+- The API owns request creation plus download-link generation, but the Function owns queue consumption and file generation. Deploying only one side leaves the workflow stuck in `Pending` or without a download URL.
+- The queue trigger is hardcoded to `report-export-requests`, while the API publisher can read `AzureStorage__ReportExportRequestsQueueName`; using any non-default queue name in dev would break the handshake unless code is updated too.
+- The API generates SAS download URLs from `BlobClient.GenerateSasUri`, so the storage configuration must be a real connection string with account key support, not a secretless blob endpoint.
+
+## Required dev configuration
+
+- Apply EF migration `20260528003127_AddReportExportRequests` to the shared dev database before traffic.
+- API app settings: `ConnectionStrings__DefaultConnection`, `AzureStorage__ConnectionString`, `JwtSettings__Secret`, correct `AllowedOrigins`, and optionally `AzureStorage__ReportExportsContainer` / `AzureStorage__ReportExportRequestsQueueName` if staying on defaults is not desired.
+- Function app settings: `ConnectionStrings__DefaultConnection`, `AzureWebJobsStorage`, and preferably matching `AzureStorage__ConnectionString`; keep the queue name on the default `report-export-requests`.
+
+## Follow-up
+
+- Recommended repo follow-up: add the new report export storage setting names to `src\\OutdoorsShop.Api\\appsettings.json` and remove or rename the stale `AzureStorage:ReportsContainer` placeholder so the checked-in config matches the live rollout requirements.
+
+## 2026-05-28T01:15:13Z — Merged from inbox: cinnamon-deploy-help.md
+
+# Deploy help: async report export
+
+- Stage all backend source, migration, and workflow files related to report export (API, Functions, migration, DI wiring, queue/Blob logic, controller, and new endpoints).
+- Do NOT stage local.settings.json or appsettings.Development.json with real secrets; use placeholders only.
+- Apply the migration: `dotnet ef database update --project src/OutdoorsShop.Infrastructure --startup-project src/OutdoorsShop.Api --context AppDbContext`.
+- Ensure dev appsettings and local.settings.json have:
+  - ConnectionStrings:DefaultConnection (pointing to the shared Azure SQL DB)
+  - AzureStorage:ConnectionString (account key, not SAS)
+  - JwtSettings:Secret (for API)
+  - AzureWebJobsStorage (for Functions)
+- Manual deploy: publish API to app-outdoors-api-dev (zip deploy or Azure portal), Functions via CI/CD or portal.
+- Date: 2026-05-27T22:06:23.203-03:00
+
+## 2026-05-28T01:15:13Z — Merged from inbox: cinnamon-stock-queue-poc-recommendation.md
+
+# Cinnamon inbox — stock queue POC recommendation
+
+- Date: 2026-05-27T21:16:57.074-03:00
+- Owner: Cinnamon
+- Area: backend queues + functions + inventory
+
+## Decision
+
+For the POC, do **not** make `stock-updates` the authoritative stock writer yet. Keep inventory mutations synchronous in the API/database path, and use Storage Queues + Functions for async side effects or non-critical workloads first — preferably **export requested -> queue -> function generates file in Blob Storage**, with **low-stock alert queue** as the simplest follow-up demo.
+
+## Why
+
+- The current `stock-updates` flow is effectively observational: `OrderService` and `InventoryService` already change `Inventory` and write `StockUpdateLogs` before enqueueing, so `StockUpdateFunction` mostly sees work that is already done.
+- Converting stock to queue-first is not a small wiring change. It would require moving the real write responsibility into the Function, changing API contracts to `202 Accepted`/polling, handling publish-after-commit failure cases, and adding stronger idempotency/correlation data than the current `productId + delta + reason + notes + updatedAt` shape.
+- `PaymentConfirmationFunction` still restores inventory directly on payment failure, so a true queue-first stock model would also need compensating stock messages there to avoid split ownership of inventory writes.
+
+## Implementation guidance
+
+- If we want a **stock-themed** queue demo now, use `stock-updates` for audit/alert processing after the synchronous write, not as the source of truth.
+- If we want the **best demo value with lowest backend risk**, add an async export flow:
+  1. admin requests report export,
+  2. API stores request metadata / returns `202`,
+  3. queue message triggers Function,
+  4. Function generates CSV/Excel and uploads to Blob,
+  5. API exposes status/download URL.
+- If we want the **smallest** queue POC, emit low-stock alert messages and let a Function log/send admin notifications.
+
+## Impact
+
+- We still get a clean Azure demo story: Queue + Function + Blob + async status, without making checkout/admin inventory eventually consistent.
+- A future queue-first stock design can still be revisited later, but it should be treated as a workflow redesign, not a POC-only toggle.
+
+## 2026-05-28T01:15:13Z — Merged from inbox: malta-admin-reports-local-history.md
+
+# Malta inbox - admin reports request tracking
+
+- **Date:** 2026-05-27T21:23:27.855-03:00
+- **Author:** Malta (Frontend)
+- **Status:** Recommended - pending team acceptance
+- **Area:** React admin reports UX
+
+## Decision
+
+Persist recently created report request IDs in browser local storage and rehydrate them on the new `/admin/reports` page.
+
+## Why
+
+- The approved async export API contract exposes `POST /api/v1/reports/requests`, `GET /api/v1/reports/requests/{id}`, and `GET /api/v1/reports/requests/{id}/download`, but not a list endpoint for historical requests.
+- Without lightweight client-side persistence, admins would lose visibility into queued/completed exports after a refresh even though the backend can still return status by id.
+- Local storage keeps the UX simple and aligned with the existing frontend pattern of storing session-relevant client data in-browser when the server does not provide a collection read.
+
+## Impact
+
+- Admins can refresh or revisit the page and still poll/download their latest export jobs.
+- If the backend later adds a list endpoint, the frontend can swap this persistence layer for server-driven history without changing the page workflow.
+
+## 2026-05-28T01:15:13Z — Merged from inbox: toru-dev-rollout.md
+
+# Dev Rollout Sequence: Async Report Export Feature
+
+**Date:** 2026-05-27T22:00:07.784-03:00
+**Author:** toru
+
+## Rollout Sequence
+
+1. **Merge feature branch to `dev`**
+   - Ensure all code for async report export is merged into `dev`.
+
+2. **CI/CD: Functions Deployment**
+   - On push to `dev`, `.github/workflows/functions.yml` will build, test, and deploy the Azure Functions (including `ReportExportFunction`) to `func-outdoors-dev` in `rg-outdoors-dev`.
+   - No manual action required if secrets are present.
+
+3. **CI/CD: Backend API**
+   - `.github/workflows/backend.yml` only runs CI (build/tests); **no deployment** to App Service is automated.
+   - **Manual step required:**
+     - Deploy API to `app-outdoors-api-dev` using `az webapp deploy` or equivalent.
+     - Ensure App Service settings include correct `ConnectionStrings:DefaultConnection`, `AzureStorage:ConnectionString`, and `JwtSettings:Secret`.
+     - Confirm CORS `AllowedOrigins` includes the SWA hostname.
+
+4. **CI/CD: Frontend**
+   - On push to `dev`, `.github/workflows/frontend.yml` builds and deploys to Azure Static Web Apps (`app-outdoorsweb-swa`).
+   - Requires `AZURE_STATIC_WEB_APPS_API_TOKEN` secret.
+
+5. **Database Migration**
+   - Migration file for report export exists.
+   - **Manual step required:**
+     - Run EF Core migrations against dev database (can be triggered on API startup or run manually).
+
+## Blockers / Manual Actions
+
+- **API deployment is not automated**: Must be done manually until workflow is updated.
+- **Secrets**: Ensure all required Azure/GitHub secrets are present for CI/CD.
+- **CORS**: After frontend deploy, update API `AllowedOrigins` if SWA hostname changes.
+- **Database migration**: Confirm migration is applied in dev.
+
+## Next Steps
+
+1. Merge feature branch to `dev`.
+2. Push to `dev` to trigger Functions and Frontend deploys.
+3. Manually deploy API to App Service.
+4. Run database migration.
+5. Verify end-to-end async report export flow in dev.
+
+---
+
+## 2026-05-28T01:15:13Z — Merged from inbox: toru-queue-first-stock-architecture.md
+
+# Queue-First Stock Processing — Architecture Decision
+
+- **Date:** 2026-05-27T21:16:57.074-03:00
+- **Author:** Toru (Architect)
+- **Status:** Recommended — pending team acceptance
+- **Area:** Azure Functions + Storage Queues + Inventory flow
+
+---
+
+## Context
+
+The `stock-updates` queue and `StockUpdateFunction` exist but are effectively dead code. The API's `InventoryService.UpdateAsync` writes inventory changes directly to SQL (including `StockUpdateLogs`) **before** enqueueing a message. The Function's duplicate-log check then skips the message 100% of the time. The user wants to give meaningful POC use to Storage Queues and Azure Functions.
+
+---
+
+## Recommendation: Queue-First Async Stock Processing (Option A — Primary)
+
+**Switch the inventory update flow to queue-first.** The API becomes a thin gateway that validates and enqueues; the Azure Function becomes the sole writer of stock state.
+
+### New Flow
+
+```
+Admin/API request → Validate → Enqueue to "stock-updates" → Return 202 Accepted
+                                        │
+                        ┌───────────────▼───────────────────────┐
+                        │  StockUpdateFunction (queue trigger)    │
+                        │  1. Deserialize message                 │
+                        │  2. Apply delta to ProductInventory     │
+                        │  3. Write StockUpdateLog                │
+                        │  4. Low-stock alert (log/warning)       │
+                        └────────────────────────────────────────┘
+```
+
+### What Changes
+
+| Layer | Before | After |
+|-------|--------|-------|
+| API `InventoryService` | Writes DB + enqueues (fire-and-forget) | Validates + enqueues only; returns `202 Accepted` |
+| `StockUpdateFunction` | No-ops on duplicate check | Sole writer — applies delta, writes log |
+| API response | Immediate `200` with updated record | `202` with correlation ID; client polls for final state |
+| `OrderService` (checkout) | Decrements stock inline | Enqueues a negative-delta message after order creation |
+
+### Tradeoffs
+
+| Dimension | Assessment |
+|-----------|------------|
+| **Azure resource usage** | ✅ Excellent — gives real work to the Function App and the `stock-updates` queue on every inventory change |
+| **Demo/POC value** | ✅ High — shows async event-driven architecture with observable queue depth, Function invocations in Azure Portal, Application Insights traces |
+| **Observability** | ✅ Queue length visible in Storage metrics; Function execution logs in App Insights; poison queue for failures |
+| **Reliability** | ⚠️ Eventually consistent — stock reads may lag 1–3 seconds behind writes. Acceptable for a POC |
+| **Implementation risk** | 🟡 Medium — requires removing DB writes from `InventoryService.UpdateAsync` and `OrderService`, and updating API response codes. No schema changes |
+| **Idempotency** | Already handled — the existing duplicate-log check remains as a safety net for at-least-once delivery |
+
+---
+
+## Alternative A: Hybrid — Synchronous Read + Async Write-Behind (Option B)
+
+Keep the API writing stock changes to DB immediately (for instant consistency) but move **audit logging** and **low-stock alerting** to the queue-triggered Function.
+
+```
+API → Update Inventory in SQL → Return 200
+   └──► Enqueue "stock-event" ──► Function writes StockUpdateLog + sends alert
+```
+
+**Pros:** No eventual-consistency risk; simpler frontend (no 202/polling).  
+**Cons:** Function does less meaningful work (just audit + alerts). Less impressive as a POC demo.
+
+---
+
+## Alternative B: Order Payment Pipeline (Option C)
+
+Already partially implemented via `payment-confirmations` → `PaymentConfirmationFunction` → `receipt-requests` → `ReceiptGenerationFunction`. This chain already demonstrates queues → Functions → Blob Storage well. If the goal is maximum Azure resource coverage with minimal changes, enhancing this existing pipeline (e.g., adding order-status notification emails via another queue) might be lower risk.
+
+**Cons:** Doesn't address the `stock-updates` queue, which is the user's primary ask.
+
+---
+
+## Final Verdict
+
+**Go with Queue-First (Option A).** Rationale:
+
+1. It's exactly the user's stated idea — stock queue triggers the Function as the authoritative writer.
+2. It gives **real, non-redundant work** to the Storage Queue and Function App.
+3. It demonstrates a textbook async event-driven pattern that's POC-worthy.
+4. The existing `StockUpdateFunction` code is 90% ready — you just remove the duplicate-check short-circuit.
+5. Eventual consistency is a *feature* for learning: it shows why you'd poll, why you'd use `202`, and why poison queues matter.
+
+### Implementation Scope (for Cinnamon)
+
+1. **`InventoryService.UpdateAsync`** — Remove direct DB inventory writes. Keep validation. Enqueue `StockUpdateMessage` and return `202`.
+2. **`InventoryController`** — Change `PUT` response from `200` → `202 Accepted` with a location header or correlation ID.
+3. **`StockUpdateFunction`** — Remove the `existingLog` duplicate check (the Function is now the sole writer, no duplicates expected). Keep the rest as-is.
+4. **`OrderService`** (checkout flow) — After creating the order, enqueue negative-delta stock messages instead of decrementing inline.
+5. **Frontend** — Minor: show a "processing" state or auto-refresh inventory after 2 seconds.
+6. **Tests** — Creta updates unit tests to match new async contract.
+
+### Non-Goals
+
+- No schema changes.
+- No new queues (reuse `stock-updates`).
+- No new Function Apps.
+- Do NOT touch `PaymentConfirmationFunction` or `ReceiptGenerationFunction` — they already work correctly with real queue triggers.
+
+---
+
+## Risks & Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Race condition on concurrent stock deltas | `StockUpdateFunction` processes one message at a time per function instance; queue ordering is FIFO within visibility window. For POC this is sufficient |
+| Overselling during high concurrency | For POC, acceptable. Production would add optimistic concurrency or reservation pattern |
+| Message loss | Azure Storage Queue guarantees at-least-once delivery. Poison queue catches repeated failures |
+
+---
+
+*This decision supersedes the earlier `toru-azure-feature-ideas.md` inbox entry.*
+
+## 2026-05-28T01:15:13Z — Merged from inbox: toru-recovery-branch-cleanup.md
+
+# Decision: Recovery branch consolidated into dev — 2026-05-27T20:59:19.105-03:00
+
+**Author:** Toru  
+**Date:** 2026-05-27T20:59:19.105-03:00
+
+## Context
+
+A recovery branch (`recovery/b69d5fd-20260527-182815`) and a safety pointer branch (`backup/pre-recovery-20260527-182815`) were created during a previous session to preserve work in progress. The user requested these be merged into `dev`, followed by a PR to `main`, and then deletion of the temporary branches.
+
+## Decision
+
+- Committed the uncommitted `workflow_dispatch` trigger addition to `.github/workflows/backend.yml` on the recovery branch.
+- Merged `recovery/b69d5fd-20260527-182815` into `dev` via `git merge` (no conflicts — .squad/ files merged cleanly).
+- Pushed `dev` to origin (`885eab6` → `687165f`).
+- Deleted `backup/pre-recovery-20260527-182815` locally (was local-only).
+- Deleted `recovery/b69d5fd-20260527-182815` locally and from origin.
+
+## Blocker
+
+PR creation (`dev → main`) failed: the active GitHub CLI session is an Enterprise Managed User account (`JVILABOA_pampa`) which cannot create PRs on the personal repo `Jorge2215/OutdoorsShop`. **The user must create the PR manually** at:
+
+> https://github.com/Jorge2215/OutdoorsShop/compare/main...dev
+
+## State after this session
+
+- `dev` is pushed and up to date at `687165f`
+- `main` is at `dedb9d4` (unchanged, awaiting PR)
+- No recovery or backup branches remain
+
+## 2026-05-28T01:15:13Z — Merged from inbox: toru-rollout-order.md
+
+# Toru — Rollout Order for Async Report Export (2026-05-27T22:06:23.203-03:00)
+
+## Rollout Sequence
+
+1. **Commit and Push**
+   - Commit all changes (including migrations, code, and workflow updates) to the `dev` branch.
+   - Push to origin/dev. This triggers CI/CD for frontend and functions automatically.
+
+2. **CI/CD Workflows**
+   - `.github/workflows/frontend.yml` and `.github/workflows/functions.yml` will run automatically on push to `dev`.
+   - These deploy the frontend (SWA) and Azure Functions to the dev environment.
+   - **Backend API:** `.github/workflows/backend.yml` runs CI only (build/tests). API deployment is still manual.
+
+3. **Manual Steps**
+   - Deploy the backend API manually to `app-outdoors-api-dev` (use `az webapp deploy` or upload ZIP via Azure Portal).
+   - Run the new EF Core migration for report export manually (or ensure it runs on API startup).
+   - Update `AllowedOrigins` in App Service settings if SWA hostname changed.
+   - Confirm all required secrets are present in GitHub repo for CI/CD to succeed.
+
+4. **Verification**
+   - Smoke test the deployed frontend, functions, and API (hit `/api/health`).
+   - Confirm report export queue and blob output are working end-to-end.
+
+## Notes
+- Do not merge to `main` until dev rollout is verified.
+- Automated API deployment should be added to backend.yml in a future PR.
+
+## 2026-05-28T01:15:13Z — Merged from inbox: toru-sql-tables-missing-root-cause.md
+
+# Decision: SQL Tables Missing — Root Cause Analysis
+
+**Date:** 2026-05-27  
+**Author:** Toru (Architect)  
+**Status:** Finding / Action Required
+
+## Context
+
+Azure SQL Database `OutdoorsShopDB` (server `azure-sql-pampa`, resource group `AzureSqlRg`) exists but contains no application tables.
+
+## Root Cause
+
+**EF Core migrations are never applied automatically.** The architecture has no auto-migration path:
+
+1. **Bicep only provisions the empty database** — `infra/modules/sql.bicep` creates the SQL Server and an empty database. It does not run DDL or seed data.
+2. **No auto-migrate on startup** — `Program.cs` does NOT call `Database.Migrate()` or `EnsureCreated()`. This is by design for production safety.
+3. **CI/CD pipelines do not run migrations** — `backend.yml` runs build+test only; there is no `dotnet ef database update` step targeting Azure SQL.
+4. **Manual step documented but never executed** — `infra/README.md` (line 88–94) documents a post-deployment manual `dotnet ef database update` command that must be run against the Azure SQL connection string.
+
+## Evidence
+
+| File | Observation |
+|------|-------------|
+| `infra/modules/sql.bicep` | Creates empty DB (Basic tier, no schema) |
+| `infra/README.md:88-94` | Documents manual `dotnet ef database update` as required post-deploy step |
+| `src/OutdoorsShop.Api/Program.cs` | No `Migrate()` or `EnsureCreated()` call |
+| `.github/workflows/backend.yml` | No migration step |
+| `src/OutdoorsShop.Infrastructure/Data/Migrations/` | 4 migrations exist in code, never applied to Azure |
+
+## Recommended Next Steps
+
+1. **Immediate fix:** Run `dotnet ef database update` from a machine with network access to `azure-sql-pampa`, using the connection string from Key Vault or `infra/README.md` template.
+2. **Ensure firewall allows your IP** on `AzureSqlRg` → `azure-sql-pampa` before running migrations.
+3. **Long-term:** Add a migration step to the CI/CD pipeline (`backend.yml`) for the `dev` environment so tables are applied automatically on deploy. Protect `main`/prod with a manual approval gate.
+
+## Who Needs to Act
+
+- **Cinnamon** (or developer with Azure access): Execute migrations against Azure SQL.
+- **Toru**: Design pipeline migration step for ADR approval.
+
+## 2026-05-28T01:15:13Z — Merged from inbox: cinnamon-cannot-apply-migration-keyvault-access.md
+
+# Cinnamon decision: cannot apply EF migration from current session
+
+Date: 2026-05-27T22:24:02.039-03:00
+
+Summary
+- I deployed the API (app-outdoors-api-dev) to the dev App Service but was unable to apply EF migration `20260528003127_AddReportExportRequests` from my current environment.
+
+Reason
+- The App Service uses a Key Vault reference for ConnectionStrings__DefaultConnection. The current Azure CLI identity does not have permission to read the referenced secret from Key Vault, so the database connection string is not retrievable here.
+
+Impact
+- I did not run the migration. The new ReportExportRequests table will not exist in the dev database until the migration is applied.
+
+Recommended next steps
+1. Grant the deployment principal (user/service principal) GET secret permission on the Key Vault, or
+2. Have a CI/CD pipeline/service principal with Key Vault access run the EF migration (dotnet ef database update or SQL script) as part of release, or
+3. Temporarily provide a connection string value in the App Service (ConnectionStrings__DefaultConnection) only for the migration window (least preferred).
+
+If you want me to proceed with any option and you can grant the necessary Key Vault access, I will apply the migration and report back.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+## 2026-05-28T02:00:17Z — AppDbContextFactory design-time configuration
+
+Date: 2026-05-27T23:00:17.369-03:00
+
+Decision
+- `AppDbContextFactory` design-time EF configuration must mirror application startup configuration by loading `appsettings.json`, `appsettings.{Environment}.json`, API user secrets, and environment variables before resolving `ConnectionStrings:DefaultConnection`.
+- Silent fallback to local SQL Server is removed. If `DefaultConnection` is missing, design-time EF must fail loudly with a clear exception instead of silently switching databases.
+
+Reason
+- Design-time EF commands need to target the same configured environment as the API so migrations, scaffolding, and diagnostics do not accidentally run against an unintended local database.
+- A missing connection string is a configuration error that should surface immediately and explicitly.
+
+Validation
+- Build/tests were completed successfully for the change set.
+- A design-time EF info run completed using the updated configuration path.

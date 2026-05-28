@@ -1,4 +1,4 @@
-# Malta — History
+﻿# Malta — History
 
 ## Core Context
 
@@ -41,3 +41,8 @@
 - Merged inbox decision(s) related to change-password into decisions.md.
 - Noted implementation and UI work by Cinnamon/Malta/Creta in team records.
 
+- 2026-05-27T21:23:27.855-03:00: Added admin-facing async report exports at `/admin/reports` with a new `reportsApi` client for `POST/GET /api/v1/reports/requests` plus download handling, wired the route into `App.tsx`, `Header.tsx`, and `AdminDashboardPage.tsx`, and persisted recent export request IDs in browser localStorage because the approved API contract exposes create/status/download endpoints but no list endpoint. Verified with `npm run lint` and `npm run build` from `frontend/`.
+
+## 2026-05-28T01:15:13Z — Scribe team update
+- Merged the admin reports local-history decision into decisions.md.
+- Frontend should keep recent report request ids in browser local storage until the backend exposes a list endpoint.

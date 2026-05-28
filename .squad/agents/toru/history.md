@@ -1,4 +1,4 @@
-# Toru — History (summary)
+﻿# Toru — History (summary)
 
 - Project context: OutdoorsShop PoC; monorepo with React+Vite frontend and .NET 10 API; infra in Azure via Bicep.
 - Key outcomes: Deployed frontend to Blob static website; API and Functions deployed; CORS conflict diagnosed and fixed; architecture and ADRs recorded; v1.0.0 released.
@@ -6,6 +6,19 @@
 - Operational notes: Keep CORS in app config (not App Service platform); Blob static website acceptable for dev; infra details in infra/ and decisions inbox.
 
 ## Learnings
+- **2026-05-27T22:06:23 — Rollout order for async report export:**
+  1. Commit/push to dev triggers CI/CD for frontend and functions; backend API deploy and DB migration are manual.
+  2. Verify SWA hostname, update AllowedOrigins, confirm secrets, and smoke test all components before merging to main.
+
+- **2026-05-27T22:00:07 — Dev rollout sequence for async report export:**
+  - Functions and frontend deploy automatically to dev on push via CI/CD.
+  - Backend API deploy is manual (no deploy step in backend.yml); must use az webapp deploy or similar.
+  - Database migration for report export must be run manually or on API startup.
+  - CORS AllowedOrigins must be updated if SWA hostname changes.
+  - All required secrets must be present for CI/CD to succeed.
+
+- **2026-05-27T20:59:19 — Recovery branch consolidation:** Merged `recovery/b69d5fd-20260527-182815` into `dev`. The recovery branch had 1 squad-docs commit + an uncommitted `workflow_dispatch` addition to `backend.yml`. Both were cleanly absorbed into `dev` with no conflicts. Both recovery and backup branches deleted (local + remote). PR dev→main must be created manually by the user via GitHub web UI because the active GitHub CLI session is an Enterprise Managed User (`JVILABOA_pampa`) which cannot create PRs on personal repos.
+- **Pattern:** When a recovery/worktree branch diverges and only touches `.squad/` files and CI config, a direct `git merge` into dev is safe and typically conflict-free.
 
 - **2026-05-24 — SWA migration:** `Microsoft.Web/staticSites` IS available in `westus3` (previous note that it was unavailable was incorrect or region support expanded). `app-outdoorsweb-swa` provisioned successfully in `westus3`. Default hostname: `wonderful-plant-0a1ca5f0f.7.azurestaticapps.net`.
 - **Secret write scope:** `gh secret set` requires a PAT with `secrets:write` scope. If CLI returns HTTP 403, user must set secrets manually via GitHub UI.
@@ -44,3 +57,15 @@
   - cinnamon-azure-deploy-readiness.md
   - toru-azure-deploy-readiness.md
 )
+
+## 2026-05-28T01:15:13Z — Scribe team update
+- Merged Toru inbox decisions into decisions.md: queue-first stock writing is not recommended for the current POC; use async report exports or low-stock alerts first.
+- Logged rollout guidance that pushes to dev auto-deploy frontend and Functions, but backend API deployment and the report-export EF migration remain manual steps.
+
+- **2026-05-27T22:24:02.039-03:00 — Validation & permissions check:** Confirmed dev rollout path for async report export: Frontend (SWA) and Functions auto-deploy on push; API deploy and EF migration remain manual. Verified current Azure CLI identity (JVILABOA@pampa.com) has Owner role on subscription `bb5ffe61-553c-4019-a657-79878bed7e08`, which is sufficient to perform API deployment and run the EF migration against the dev Azure SQL. Documented required sequencing and app-setting requirements in `.squad/decisions/inbox/toru-report-export-rollout-order.md`.
+
+- Recorded recovery-branch cleanup and Azure SQL missing-table root-cause notes in the shared decision record.
+
+## 2026-05-28T01:24:02Z — Orchestration
+- Orchestration log written: `.squad/orchestration-log/2026-05-28T01-24-02Z-toru.md`.
+- Session log recorded: `.squad/log/2026-05-28T01-24-02Z-scribe-session.md`.
