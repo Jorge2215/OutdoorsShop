@@ -7,14 +7,17 @@ on:
     branches: [main, dev]
     paths:
       - 'src/**'
+      - '.github/workflows/backend.yml'
   pull_request:
     branches: [main, dev]
     paths:
       - 'src/**'
+      - '.github/workflows/backend.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: backend-${{ github.ref }}
@@ -62,3 +65,50 @@ jobs:
             echo "|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
             echo "| $PASSED | $FAILED | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Publish API artifact
+        if: github.event_name == 'push'
+        run: dotnet publish src/OutdoorsShop.Api/OutdoorsShop.Api.csproj --configuration Release --no-restore -r linux-x64 --self-contained false /p:UseAppHost=false --output publish/api
+
+      - name: Package API artifact
+        if: github.event_name == 'push'
+        run: |
+          cd publish/api
+          zip -r ../api.zip .
+
+      - name: Upload API publish artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-publish
+          path: publish/api.zip
+
+  deploy:
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'dev')
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    env:
+      AZURE_WEBAPP_NAME: ${{ github.ref_name == 'main' && 'app-outdoors-api-prod' || 'app-outdoors-api-dev' }}
+      AZURE_RESOURCE_GROUP: ${{ github.ref_name == 'main' && 'rg-outdoors-prod' || 'rg-outdoors-dev' }}
+      API_HEALTH_URL: ${{ github.ref_name == 'main' && 'https://app-outdoors-api-prod.azurewebsites.net/api/health' || 'https://app-outdoors-api-dev.azurewebsites.net/api/health' }}
+
+    steps:
+      - name: Download API publish artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-publish
+          path: publish
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy API package
+        run: az webapp deployment source config-zip --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/api.zip --timeout 600
+
+      - name: Smoke test API health
+        run: curl --fail --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 "$API_HEALTH_URL"
