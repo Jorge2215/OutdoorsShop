@@ -1,12 +1,8 @@
-using ClosedXML.Excel;
-using CsvHelper;
-using CsvHelper.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OutdoorsShop.Core.DTOs.Reports;
 using OutdoorsShop.Core.Interfaces;
-using System.Globalization;
-using System.Text;
+using System.Security.Claims;
 
 namespace OutdoorsShop.Api.Controllers;
 
@@ -15,15 +11,13 @@ namespace OutdoorsShop.Api.Controllers;
 [Authorize(Roles = "Administrator")]
 public class ReportsController : ControllerBase
 {
-    private const string CsvContentType = "text/csv";
-    private const string ExcelContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    private readonly IOrderService _orderService;
-    private readonly IInventoryService _inventoryService;
+    private readonly IReportFileService _reportFileService;
+    private readonly IReportExportRequestService _reportExportRequestService;
 
-    public ReportsController(IOrderService orderService, IInventoryService inventoryService)
+    public ReportsController(IReportFileService reportFileService, IReportExportRequestService reportExportRequestService)
     {
-        _orderService = orderService;
-        _inventoryService = inventoryService;
+        _reportFileService = reportFileService;
+        _reportExportRequestService = reportExportRequestService;
     }
 
     [HttpGet("orders")]
@@ -34,8 +28,15 @@ public class ReportsController : ControllerBase
         if (from.HasValue && to.HasValue && from > to)
             return BadRequest(new { message = "The 'from' date must be earlier than or equal to the 'to' date." });
 
-        var rows = await _orderService.GetReportRowsAsync(from, to);
-        return CreateReportResult(format, rows, "orders-report");
+        try
+        {
+            var report = await _reportFileService.BuildOrdersReportAsync(format, from, to, "orders-report");
+            return File(report.Content, report.ContentType, report.FileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpGet("inventory")]
@@ -43,57 +44,60 @@ public class ReportsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> InventoryReport([FromQuery] string format = "csv")
     {
-        var rows = await _inventoryService.GetReportRowsAsync();
-        return CreateReportResult(format, rows, "inventory-report");
-    }
-
-    private IActionResult CreateReportResult<T>(string format, IReadOnlyList<T> rows, string fileNamePrefix)
-    {
-        var normalizedFormat = format.Trim().ToLowerInvariant();
-        return normalizedFormat switch
+        try
         {
-            "csv" => File(BuildCsv(rows), CsvContentType, $"{fileNamePrefix}.csv"),
-            "excel" => File(BuildExcel(rows, fileNamePrefix), ExcelContentType, $"{fileNamePrefix}.xlsx"),
-            _ => BadRequest(new { message = "Supported formats are csv and excel." })
-        };
-    }
-
-    private static byte[] BuildCsv<T>(IReadOnlyList<T> rows)
-    {
-        using var stringWriter = new StringWriter(CultureInfo.InvariantCulture);
-        using var csv = new CsvWriter(stringWriter, new CsvConfiguration(CultureInfo.InvariantCulture));
-        csv.WriteHeader<T>();
-        csv.NextRecord();
-        csv.WriteRecords(rows);
-        return Encoding.UTF8.GetBytes(stringWriter.ToString());
-    }
-
-    private static byte[] BuildExcel<T>(IReadOnlyList<T> rows, string worksheetName)
-    {
-        using var workbook = new XLWorkbook();
-        var worksheet = workbook.Worksheets.Add(NormalizeWorksheetName(worksheetName));
-
-        if (rows.Count > 0)
-        {
-            worksheet.Cell(1, 1).InsertTable(rows);
+            var report = await _reportFileService.BuildInventoryReportAsync(format, "inventory-report");
+            return File(report.Content, report.ContentType, report.FileName);
         }
-        else
+        catch (ArgumentException ex)
         {
-            var properties = typeof(T).GetProperties();
-            for (var index = 0; index < properties.Length; index++)
-                worksheet.Cell(1, index + 1).Value = properties[index].Name;
+            return BadRequest(new { message = ex.Message });
         }
-
-        worksheet.Columns().AdjustToContents();
-
-        using var stream = new MemoryStream();
-        workbook.SaveAs(stream);
-        return stream.ToArray();
     }
 
-    private static string NormalizeWorksheetName(string value)
+    [HttpPost("requests")]
+    [ProducesResponseType(typeof(ReportExportRequestDto), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CreateRequest([FromBody] ReportExportRequestCreateDto request)
     {
-        var sanitized = value.Replace('-', ' ');
-        return sanitized.Length <= 31 ? sanitized : sanitized[..31];
+        var result = await _reportExportRequestService.CreateAsync(request, GetCurrentUserId());
+        if (!result.Succeeded || result.Value is null)
+            return BadRequest(new { message = result.ErrorMessage ?? "Report export request could not be created." });
+
+        return AcceptedAtAction(nameof(GetRequestById), new { id = result.Value.Id }, result.Value);
     }
+
+    [HttpGet("requests/{id:guid}")]
+    [ProducesResponseType(typeof(ReportExportRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetRequestById(Guid id)
+    {
+        var result = await _reportExportRequestService.GetByIdAsync(id);
+        if (result.NotFound)
+            return NotFound(new { message = result.ErrorMessage });
+
+        if (!result.Succeeded || result.Value is null)
+            return BadRequest(new { message = result.ErrorMessage ?? "Report export request could not be retrieved." });
+
+        return Ok(result.Value);
+    }
+
+    [HttpGet("requests/{id:guid}/download")]
+    [ProducesResponseType(typeof(ReportExportDownloadDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Download(Guid id)
+    {
+        var result = await _reportExportRequestService.GetDownloadAsync(id);
+        if (result.NotFound)
+            return NotFound(new { message = result.ErrorMessage });
+
+        if (!result.Succeeded || result.Value is null)
+            return Conflict(new { message = result.ErrorMessage ?? "Report export is not ready for download." });
+
+        return Ok(result.Value);
+    }
+
+    private string? GetCurrentUserId()
+        => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
 }

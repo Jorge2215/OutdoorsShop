@@ -33,6 +33,9 @@ var storageConnectionString = builder.Configuration["AzureStorage:ConnectionStri
 builder.Services.AddSingleton(new BlobServiceClient(storageConnectionString));
 builder.Services.AddScoped<IBlobStorageService, BlobStorageService>();
 builder.Services.AddScoped<IReceiptQueuePublisher, ReceiptQueuePublisher>();
+builder.Services.AddScoped<IReportExportQueuePublisher, ReportExportQueuePublisher>();
+builder.Services.AddScoped<IReportFileService, ReportFileService>();
+builder.Services.AddScoped<IReportExportRequestService, ReportExportRequestService>();
 
 // Repositories
 builder.Services.AddScoped<IProductRepository, ProductRepository>();

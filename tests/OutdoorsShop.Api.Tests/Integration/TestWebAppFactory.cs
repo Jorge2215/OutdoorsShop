@@ -89,6 +89,12 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
                 .Returns(Task.CompletedTask);
             services.AddSingleton(receiptQueueMock.Object);
 
+            services.RemoveAll<IReportExportQueuePublisher>();
+            var reportExportQueueMock = new Mock<IReportExportQueuePublisher>();
+            reportExportQueueMock.Setup(q => q.EnqueueAsync(It.IsAny<ReportExportRequestMessage>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            services.AddSingleton(reportExportQueueMock.Object);
+
             using var scope = services.BuildServiceProvider().CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             db.Database.EnsureCreated();

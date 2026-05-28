@@ -17,6 +17,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<SalesOrderDetail> OrderItems { get; set; }
     public DbSet<ProductInventory> Inventory { get; set; }
     public DbSet<StockUpdateLog> StockUpdateLogs { get; set; }
+    public DbSet<ReportExportRequest> ReportExportRequests { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -120,6 +121,21 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(s => s.Reason).HasMaxLength(50).IsRequired();
             entity.Property(s => s.Notes).HasMaxLength(500);
             entity.ToTable("StockUpdateLogs");
+        });
+
+        builder.Entity<ReportExportRequest>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.ToTable("ReportExportRequests");
+            entity.Property(r => r.ReportType).HasMaxLength(50).IsRequired();
+            entity.Property(r => r.Format).HasMaxLength(20).IsRequired();
+            entity.Property(r => r.Status).HasMaxLength(20).IsRequired();
+            entity.Property(r => r.BlobName).HasMaxLength(500);
+            entity.Property(r => r.BlobUrl).HasMaxLength(2000);
+            entity.Property(r => r.FileName).HasMaxLength(255);
+            entity.Property(r => r.ContentType).HasMaxLength(255);
+            entity.Property(r => r.ErrorMessage).HasMaxLength(2000);
+            entity.Property(r => r.RequestedByUserId).HasMaxLength(450);
         });
     }
 }
