@@ -92,6 +92,9 @@ jobs:
       AZURE_WEBAPP_NAME: ${{ github.ref_name == 'main' && 'app-outdoors-api-prod' || 'app-outdoors-api-dev' }}
       AZURE_RESOURCE_GROUP: ${{ github.ref_name == 'main' && 'rg-outdoors-prod' || 'rg-outdoors-dev' }}
       API_HEALTH_URL: ${{ github.ref_name == 'main' && 'https://app-outdoors-api-prod.azurewebsites.net/api/health' || 'https://app-outdoors-api-dev.azurewebsites.net/api/health' }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     steps:
       - name: Download API publish artifact
@@ -99,6 +102,24 @@ jobs:
         with:
           name: api-publish
           path: publish
+
+      - name: Validate Azure deployment configuration
+        shell: bash
+        run: |
+          missing=()
+          [ -n "$AZURE_CLIENT_ID" ] || missing+=("AZURE_CLIENT_ID")
+          [ -n "$AZURE_TENANT_ID" ] || missing+=("AZURE_TENANT_ID")
+          [ -n "$AZURE_SUBSCRIPTION_ID" ] || missing+=("AZURE_SUBSCRIPTION_ID")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "### Backend deploy blocked by external Azure configuration" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Build and publish passed, but deployment cannot authenticate to Azure." >> "$GITHUB_STEP_SUMMARY"
+            echo "Missing required secret(s): ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
+            echo "Configure them in the '${{ github.ref_name == 'main' && 'prod' || 'dev' }}' GitHub environment or as repository secrets, then rerun the push." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Missing Azure deployment secrets::Build and publish succeeded, but deployment is blocked until ${missing[*]} are configured for the '${{ github.ref_name == 'main' && 'prod' || 'dev' }}' environment or repository."
+            exit 1
+          fi
 
       - name: Azure login
         uses: azure/login@v2
