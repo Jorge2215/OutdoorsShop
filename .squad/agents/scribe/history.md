@@ -1,4 +1,4 @@
-# Scribe — History
+﻿# Scribe — History
 
 ## Core Context
 
@@ -16,6 +16,12 @@
 
 <!-- Append learnings below -->
 
+### 2026-05-27 — Azure Storage Queue & StockUpdate Function
+- Order creation and admin inventory updates both enqueue `StockUpdateMessage` to `stock-updates` queue
+- Function `StockUpdate` ([QueueTrigger("stock-updates")]) often no-ops due to prior DB/log update in API
+- Function App runtime depends on `AzureWebJobsStorage` pointing to correct storage account
+
+
 ## 2026-05-27T19:51:34Z — Scribe
 
 - Merged 2 inbox decisions related to async order receipts into `.squad/decisions/decisions.md` and removed the inbox files.
@@ -27,3 +33,7 @@
 - Merged 1 inbox items into decisions.md
 - Archived 0 entries (none older than cutoff)
 
+## 2026-05-28T01:15:13Z — Scribe
+- Pre-check: decisions.md was 78163 bytes and .squad/decisions/inbox/ contained 9 files.
+- Merged 10 inbox decisions into decisions.md, removed the inbox files, dropped 1 duplicate residual inbox note, wrote orchestration/session logs, and summarized oversized history files.
+- Health report: decisions.md finished at 98657 bytes; summarized histories: cinnamon.
