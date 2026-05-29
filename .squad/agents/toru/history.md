@@ -6,6 +6,17 @@
 - Operational notes: Keep CORS in app config (not App Service platform); Blob static website acceptable for dev; infra details in infra/ and decisions inbox.
 
 ## Learnings
+- **2026-05-28T11:23:06.621-03:00 — Async report export architecture documented:**
+  - Updated `docs/architecture.md` to reflect the live async report export feature.
+  - Added `ReportExportFunction` (queue trigger: `report-export-requests`) to §2 diagram and §5 Functions table.
+  - Documented end-to-end flow in §5: POST /requests → queue → ReportExportFunction → blob write → SAS download.
+  - Added `report-exports` container and `report-export-requests` queue to §7 storage table.
+  - Added `ReportExportRequests` table to §6 data architecture.
+  - Corrected `.NET 8` → `.NET 10` isolated runtime throughout (§2, §5 tech stack, §10 resources, §10.1 diagram).
+  - Removed stale Known Gap item "CSV/Excel report exports not wired up" from §12.
+  - Updated §10.2 communication flows: added report export queue and SAS download flow rows; corrected API→Storage description.
+  - Added `/admin/reports` → `AdminReportsPage` to the frontend routes table (§3).
+
 - **2026-05-28T01:36:33.323-03:00 — Backend workflow runtime restore fix:**
   - Diagnosed push-triggered deploy failures as a restore/publish runtime mismatch (NETSDK1047).
   - Compared failed push and successful workflow_dispatch logs; only restore step differed.
@@ -104,3 +115,17 @@
   - The latest dev push run for `backend.yml` (`d01e899`) failed at `dotnet publish` with `NETSDK1047` because the workflow restored without the `linux-x64` runtime target, so the deploy job was skipped.
   - Result: `app-outdoors-api-dev` kept serving older App Service content, which explains Swagger showing only legacy report routes and `404` on `/api/v1/reports/requests*`.
   - Shortest safe recovery: publish/deploy the current API build with a runtime-aware restore (or remove `--no-restore` for publish), then verify Swagger includes the request routes before moving on to DB/function checks.
+
+- **2026-05-28T21:01:08.714-03:00 — Catalog MVP design review approved:**
+  - Confirmed 3-item MVP scope: price-range filtering (`minPrice`/`maxPrice`), sort (`sort` param), and frontend controls (inputs + dropdown).
+  - Defined API contract: all filters compose with AND; sort enum is `name_asc|price_asc|price_desc`; response shape unchanged.
+  - Key architectural decision: unify repository into one composable query method (`SearchProductsAsync`) rather than branching on search/category/price separately.
+  - No DB migration, no pagination envelope, no slider — scope kept tight.
+  - Split work: Cinnamon (backend repo + controller), Malta (frontend UI + API client), Creta (tests).
+  - Decision written to `.squad/decisions/inbox/toru-catalog-mvp-design-review.md`.
+
+## 2026-05-29T01:22:55.575Z (UTC) — Scribe update
+- Orchestration log: .squad/orchestration-log/2026-05-29T01:22:55.575Z-toru.md
+- Session log: .squad/log/2026-05-29T01:22:55.575Z-scribe-session.md
+- decisions.md size: 54039 bytes; inbox processed: 0; archival: none moved.
+

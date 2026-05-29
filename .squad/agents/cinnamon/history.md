@@ -68,3 +68,24 @@
 - Merged remaining decision inbox files into `.squad/decisions/decisions.md` (3 files: cinnamon-api-deploy-workflow.md, cinnamon-design-time-ef-config.md, toru-api-deploy-workflow.md).
 - Orchestration log written: `.squad/orchestration-log/2026-05-28T03-01-40Z-cinnamon.md`.
 - Session log recorded: `.squad/log/2026-05-28T03-01-40Z-api-deploy-workflow.md`.
+
+### 2026-05-28T11:23:06.621-03:00 — Architecture doc review (async report export)
+- `docs/architecture.md` was accurate on queue name (`report-export-requests`), blob container (`report-exports`), function app (`func-outdoors-dev`), SAS URL TTL (15 min), and .NET 10 references.
+- **Corrected:** Download flow line said "browser redirects user to SAS URL" — the controller returns `200 OK` JSON; the frontend JS programmatically triggers the download. Updated to "frontend JavaScript triggers a browser download via the SAS URL (anchor click; no HTTP redirect from API)".
+- **Added:** `ReceiptGenerationFunction` (queue: `receipt-requests`, container: `order-receipts`) was missing from the functions table, both diagrams, the storage table, and the communication flows table. Added to all four locations.
+- **Fixed:** "Planned (Not Implemented)" falsely claimed order receipts were PDFs and not yet built. `ReceiptGenerationFunction` is already implemented and generates HTML. Updated accordingly.
+
+### 2026-05-28T21:01:08.714-03:00 — Catalog MVP backend query composition
+- `GET /api/v1/products` now accepts `minPrice`, `maxPrice`, and `sort` alongside the existing `categoryId` and `search` query params in `src\OutdoorsShop.Api\Controllers\ProductsController.cs`.
+- Catalog filtering now flows through `IProductRepository.SearchProductsAsync` / `src\OutdoorsShop.Infrastructure\Repositories\ProductRepository.cs`, which composes search, category, and price predicates with AND logic and applies sorting after filtering.
+- Allowed sort values are `name_asc`, `price_asc`, and `price_desc`; invalid values fall back to `name_asc`, and `minPrice > maxPrice` returns an empty array instead of a 400.
+- Coverage for this contract lives in `tests\OutdoorsShop.Api.Tests\Controllers\ProductsControllerTests.cs`, `tests\OutdoorsShop.Api.Tests\Repositories\ProductRepositoryTests.cs`, and `tests\OutdoorsShop.Api.Tests\Integration\ProductsIntegrationTests.cs`.
+## 2026-05-29T01:05:57.2395908Z — Scribe update
+- Archived 0 decisions; merged 14 inbox files.
+
+
+## 2026-05-29T01:22:55.575Z (UTC) — Scribe update
+- Orchestration log: .squad/orchestration-log/2026-05-29T01:22:55.575Z-cinnamon.md
+- Session log: .squad/log/2026-05-29T01:22:55.575Z-scribe-session.md
+- decisions.md size: 54039 bytes; inbox processed: 0; archival: none moved.
+

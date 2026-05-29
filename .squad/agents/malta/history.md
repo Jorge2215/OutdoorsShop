@@ -54,3 +54,13 @@
 - 2026-05-28T01:00:14.073-03:00: Verified the admin export flow: the AdminReportsPage calls reportsApi.createRequest which POSTs to /api/v1/reports/requests via buildApiUrl(). The effective endpoint is {VITE_API_URL}/api/v1/reports/requests (VITE_API_URL is set in frontend/.env.production). No frontend code changes required if the backend is restored to the intended base path.
 
 - 2026-05-28T01:00:14.073-03:00: Risk notes: the frontend expects cookie-based authentication (credentials: 'include') and the API to return either JSON download metadata or a direct/redirect URL. If the backend changes auth scheme, base path, or the download payload shape, the minimal fixes are: update VITE_API_URL, or adjust fetchWithAuth()/reportsApi mapping logic. Key files: frontend/src/pages/admin/AdminReportsPage.tsx, frontend/src/api/reports.api.ts, frontend/src/api/config.ts.
+
+- 2026-05-28T21:01:08.714-03:00: Product catalog filtering lives in `frontend/src/pages/ProductsPage.tsx`, with URL/query serialization in `frontend/src/api/products.api.ts`. New shopper filters should extend the existing `useSearchParams` + `productsApi.list()` flow rather than replacing it so category, text search, and client pagination keep working together.
+
+- 2026-05-28T21:01:08.714-03:00: For the catalog MVP, price inputs use separate text state plus 300 ms debounced numeric state before calling the API or syncing the URL. Default `name_asc` sorting stays implicit in the URL, while non-default sort choices serialize as `sort=price_asc` or `sort=price_desc` to keep shared links tidy.
+
+## 2026-05-29T01:22:55.575Z (UTC) — Scribe update
+- Orchestration log: .squad/orchestration-log/2026-05-29T01:22:55.575Z-malta.md
+- Session log: .squad/log/2026-05-29T01:22:55.575Z-scribe-session.md
+- decisions.md size: 54039 bytes; inbox processed: 0; archival: none moved.
+

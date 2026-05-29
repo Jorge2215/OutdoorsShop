@@ -1,6 +1,6 @@
 # OutdoorsShop — Application Architecture
 
-> **Last updated:** 2026-05-24  
+> **Last updated:** 2026-05-28T11:23:06.621-03:00  
 > **Author:** Toru (Architect)  
 > **Status:** Current
 
@@ -39,21 +39,26 @@ OutdoorsShop is a full-stack e-commerce proof-of-concept for outdoor gear, built
   │   Azure SQL Database    │     │        Azure Blob Storage          │
   │   azure-sql-pampa       │     │   stoutdoorsdev  (westus3)         │
   │   OutdoorsShopDB        │     │   • product-images (CDN/Unsplash)  │
-  │   RG: AzureSqlRg        │     │   • webapp-releases/api-dev.zip    │
-  └─────────────────────────┘     │   • Queues:                        │
+  │   RG: AzureSqlRg        │     │   • report-exports (export blobs)  │
+  └─────────────────────────┘     │   • webapp-releases/api-dev.zip    │
+             │                    │   • Queues:                        │
              │                    │     - payment-confirmations         │
              │                    │     - stock-updates                 │
+             │                    │     - report-export-requests        │
+             │                    │     - receipt-requests              │
              │                    └──────────────┬─────────────────────┘
              │                                   │  Queue triggers
   ┌──────────▼───────────────────────────────────▼─────────────────────┐
-  │           Azure Functions — .NET 8 Isolated                         │
+  │           Azure Functions — .NET 10 Isolated                        │
   │    func-outdoors-dev.azurewebsites.net                              │
   │    Region: westus3  │  RG: rg-outdoors-dev                          │
   │    Flex Consumption plan                                             │
-  │    • HealthFunction         (HTTP)                                   │
-  │    • SeasonalDiscountFunction (Timer — daily 02:00 UTC)              │
+  │    • HealthFunction              (HTTP)                              │
+  │    • SeasonalDiscountFunction    (Timer — daily 02:00 UTC)           │
   │    • PaymentConfirmationFunction (Queue: payment-confirmations)      │
-  │    • StockUpdateFunction     (Queue: stock-updates)                  │
+  │    • StockUpdateFunction         (Queue: stock-updates)              │
+  │    • ReportExportFunction        (Queue: report-export-requests)     │
+  │    • ReceiptGenerationFunction   (Queue: receipt-requests)           │
   └─────────────────────────────────────────────────────────────────────┘
 
   ┌─────────────────────────────────────────────────────────────────────┐
@@ -102,6 +107,7 @@ OutdoorsShop is a full-stack e-commerce proof-of-concept for outdoor gear, built
 | `/admin/products` | `AdminProductsPage` | Administrator |
 | `/admin/inventory` | `AdminInventoryPage` | Administrator |
 | `/admin/orders` | `AdminOrdersPage` | Administrator |
+| `/admin/reports` | `AdminReportsPage` | Administrator |
 
 All routes use lazy loading via `React.lazy` + `Suspense`. Unknown routes redirect to `/`.
 
@@ -176,7 +182,7 @@ src/
 | `CustomersController` | `/api/v1/customers` | GET profile, PUT update (Customer role) |
 | `OrdersController` | `/api/v1/orders` | POST create, GET list, GET by ID |
 | `InventoryController` | `/api/v1/inventory` | GET levels, PUT adjust (Admin) |
-| `ReportsController` | `/api/v1/reports` | CSV/Excel exports (Admin) |
+| `ReportsController` | `/api/v1/reports` | Synchronous CSV/Excel exports (Admin); async export: `POST /requests`, `GET /requests/{id}`, `GET /requests/{id}/download` |
 
 ### Authentication & Database Details
 
@@ -200,7 +206,7 @@ src/
 
 | Concern | Detail |
 |---|---|
-| Runtime | .NET 8 isolated worker |
+| Runtime | .NET 10 isolated worker |
 | Host SDK | `Microsoft.Azure.Functions.Worker` |
 | Observability | OpenTelemetry → Azure Monitor exporter |
 | Data access | EF Core → Azure SQL (shared `AppDbContext`) |
@@ -214,8 +220,43 @@ src/
 | `SeasonalDiscountFunction` | Timer | `0 0 2 * * *` (02:00 UTC daily) | Applies seasonal pricing: Winter→Camping/Trekking 15% off; Summer→Cycling/Climbing 10% off; Spring/Autumn→reset |
 | `PaymentConfirmationFunction` | Queue | `payment-confirmations` | Marks order as `Processing`/`Cancelled`, restores inventory on failure |
 | `StockUpdateFunction` | Queue | `stock-updates` | Adjusts inventory levels, triggers reorder alerts |
+| `ReportExportFunction` | Queue | `report-export-requests` | Builds CSV/Excel report file, writes blob to `report-exports` container, updates request record status |
+| `ReceiptGenerationFunction` | Queue | `receipt-requests` | Generates HTML order receipt for confirmed orders, uploads to `order-receipts` container |
 
 Queue connection string comes from `AzureWebJobsStorage` (bound to `stoutdoorsdev` storage account).
+
+### Async Report Export Flow
+
+The async export feature lets admin users queue large report jobs without blocking the HTTP response. The end-to-end flow is:
+
+```
+Admin browser
+  │  POST /api/v1/reports/requests  { reportType, format, from?, to? }
+  ▼
+ReportsController.CreateRequest
+  │  persists ReportExportRequest row (status: Pending) → Azure SQL
+  │  enqueues ReportExportRequestMessage { requestId } →
+  │      stoutdoorsdev / report-export-requests queue (AzureWebJobsStorage)
+  │  returns 202 Accepted with request DTO
+  ▼
+Admin browser polls
+  │  GET /api/v1/reports/requests/{id}   ← returns current status
+  │  (AdminReportsPage polls every 5 s while status is non-terminal)
+  ▼
+ReportExportFunction  (queue trigger: report-export-requests)
+  │  deserialises message → calls ReportExportRequestService.ProcessAsync
+  │  builds CSV/Excel file via IReportFileService
+  │  uploads to stoutdoorsdev / report-exports / {type}/{requestId}.{ext}
+  │  updates request row: status=Completed, BlobName, FileName, ContentType
+  ▼
+Admin browser downloads
+  │  GET /api/v1/reports/requests/{id}/download
+  │  → generates time-limited SAS URL (15 min) for the blob
+  │  → returns ReportExportDownloadDto { downloadUrl, expiresAt }
+  │  frontend JavaScript triggers a browser download via the SAS URL (anchor click; no HTTP redirect from API)
+```
+
+Blob naming convention is defined in `ReportExportStorageConventions`: `{reportType}/{requestId:N}.{csv|xlsx}`.
 
 ### Deployment
 
@@ -247,6 +288,7 @@ Queue connection string comes from `AzureWebJobsStorage` (bound to `stoutdoorsde
 | `Customers` | `Customer` | Linked to `AspNetUsers` |
 | `Inventory` | `ProductInventory` | `QuantityAvailable`, `LastUpdated` |
 | `StockUpdateLogs` | `StockUpdateLog` | Audit trail for queue-triggered updates |
+| `ReportExportRequests` | `ReportExportRequest` | Tracks async export jobs: status, blob reference, timestamps, error message |
 | `AspNetUsers` | `ApplicationUser` | ASP.NET Identity table |
 | `AspNetRoles` | `IdentityRole` | `Administrator`, `Customer` |
 
@@ -269,9 +311,13 @@ EF Core migrations are in `src/OutdoorsShop.Infrastructure/Data/Migrations/`. Ap
 | Container / Queue | Purpose |
 |---|---|
 | `product-images` | Product image blobs (referenced by `ImageUrl` column) |
+| `report-exports` | Completed report export blobs written by `ReportExportFunction`; served via SAS URLs |
+| `order-receipts` | HTML order receipts written by `ReceiptGenerationFunction` for confirmed orders |
 | `webapp-releases` | API deployment zip (`api-dev.zip`) for run-from-package |
 | Queue: `payment-confirmations` | Messages consumed by `PaymentConfirmationFunction` |
 | Queue: `stock-updates` | Messages consumed by `StockUpdateFunction` |
+| Queue: `report-export-requests` | Messages enqueued by `ReportsController`; consumed by `ReportExportFunction` |
+| Queue: `receipt-requests` | Messages enqueued after payment confirmation; consumed by `ReceiptGenerationFunction` |
 
 ### Storage Account: `stoutdoorswebdev` — Safe to delete
 
@@ -279,8 +325,7 @@ This was the original Blob static website host for the SPA before the SWA migrat
 
 ### Planned (Not Implemented)
 
-- Order receipts stored as PDFs in Blob Storage
-- CSV/Excel report exports written to Blob Storage by the Reports API
+- *(No pending Blob Storage work. Order receipts are implemented as HTML blobs in `order-receipts` via `ReceiptGenerationFunction`.)*
 
 ---
 
@@ -357,7 +402,7 @@ A `main` branch worktree checkout is maintained at `.copilot-main/` for multi-br
 |---|---|---|---|---|
 | `app-outdoorsweb-swa` | Azure Static Web App | westus3 | rg-outdoors-dev | Frontend host; URL: `wonderful-plant-0a1ca5f0f.7.azurestaticapps.net` |
 | `app-outdoors-api-dev` | App Service (Linux) | westus3 | rg-outdoors-dev | .NET 10 Web API |
-| `func-outdoors-dev` | Azure Functions App | westus3 | rg-outdoors-dev | .NET 8 isolated; Flex Consumption plan |
+| `func-outdoors-dev` | Azure Functions App | westus3 | rg-outdoors-dev | .NET 10 isolated; Flex Consumption plan |
 | `azure-sql-pampa` | Azure SQL Server | (existing) | AzureSqlRg | Hosts `OutdoorsShopDB` |
 | `OutdoorsShopDB` | Azure SQL Database | — | AzureSqlRg | EF Core target |
 | `stoutdoorsdev` | Storage Account | westus3 | rg-outdoors-dev | ⚠️ DO NOT DELETE — images, queues, releases |
@@ -396,18 +441,22 @@ A `main` branch worktree checkout is maintained at `.copilot-main/` for multi-br
           │  azure-sql- │  │  stoutdoorsdev           │
           │  pampa      │  │  Containers:             │
           │  Outdoors   │  │  · product-images/       │
-          │  ShopDB     │  │  · order-receipts/       │
-          │  (AzureSqlRg│  │  · webapp-releases/      │
-          └─────────────┘  │  Queues:                 │
+          │  ShopDB     │  │  · report-exports/       │
+          │  (AzureSqlRg│  │  · order-receipts/       │
+          └─────────────┘  │  · webapp-releases/      │
+                           │  Queues:                 │
                            │  · payment-confirmations │
                            │  · stock-updates         │
+                           │  · report-export-        │
+                           │    requests              │
+                           │  · receipt-requests      │
                            └──────────┬───────────────┘
                                       │ Queue Triggers
                                       ▼
                          ┌────────────────────────────┐
                          │  Azure Functions App        │
                          │  func-outdoors-dev          │
-                         │  .NET 8 isolated            │
+                         │  .NET 10 isolated           │
                          │  Flex Consumption plan      │
                          │                             │
                          │  · HealthCheckFunction      │
@@ -419,6 +468,12 @@ A `main` branch worktree checkout is maintained at `.copilot-main/` for multi-br
                          │     confirmations)          │
                          │  · StockUpdate              │
                          │    (Queue: stock-updates)   │
+                         │  · ReportExport             │
+                         │    (Queue: report-export-   │
+                         │     requests)               │
+                         │  · ReceiptGeneration        │
+                         │    (Queue: receipt-         │
+                         │     requests)               │
                          └──────────┬──────────────────┘
                                     │ EF Core / SQL Client
                                     ▼
@@ -440,9 +495,11 @@ A `main` branch worktree checkout is maintained at `.copilot-main/` for multi-br
 | Browser → SWA | HTTPS | Static files served by Azure SWA CDN; `navigationFallback` ensures SPA routes return HTTP 200 |
 | Browser → API (`app-outdoors-api-dev`) | HTTPS + JWT Bearer | CORS policy `ReactDevPolicy` in ASP.NET Core middleware; Azure platform CORS disabled |
 | API → Azure SQL (`OutdoorsShopDB`) | TCP/TLS (EF Core) | Connection string via App Settings (Key Vault reference); EF Core 10 |
-| API → Azure Blob Storage (`stoutdoorsdev`) | HTTPS (Azure SDK) | Product image URLs sourced from Unsplash CDN; order receipts/reports written via `BlobServiceClient` |
-| Azure Functions → Azure SQL | TCP/TLS (EF Core / SQL Client) | `SeasonalDiscountFunction` (timer) reads/writes discount data; both queue functions update order/stock records |
-| Azure Storage Queues → Azure Functions | Queue trigger (SDK polling) | `payment-confirmations` queue → `PaymentConfirmationFunction`; `stock-updates` queue → `StockUpdateFunction` |
+| API → Azure Blob Storage (`stoutdoorsdev`) | HTTPS (Azure SDK) | Product image URLs sourced from Unsplash CDN; completed report export blobs written to `report-exports` container via `BlobServiceClient` |
+| Azure Functions → Azure SQL | TCP/TLS (EF Core / SQL Client) | `SeasonalDiscountFunction` (timer) reads/writes discount data; queue functions update order/stock/report-request records |
+| Azure Storage Queues → Azure Functions | Queue trigger (SDK polling) | `payment-confirmations` → `PaymentConfirmationFunction`; `stock-updates` → `StockUpdateFunction`; `report-export-requests` → `ReportExportFunction`; `receipt-requests` → `ReceiptGenerationFunction` |
+| API → Azure Storage Queue (`report-export-requests`) | HTTPS (Azure SDK) | `ReportsController` enqueues a `ReportExportRequestMessage` after persisting the request row; `ReportExportFunction` processes it asynchronously |
+| Admin browser → API → Blob SAS URL | HTTPS | Download flow: `GET /requests/{id}/download` returns a 15-min SAS URL; browser fetches the file directly from `stoutdoorsdev/report-exports` |
 | GitHub Actions → Azure SWA | SWA Deploy Action (token) | `frontend.yml` on push to `main`; requires `AZURE_STATIC_WEB_APPS_API_TOKEN` secret |
 
 ---
@@ -482,7 +539,6 @@ A `main` branch worktree checkout is maintained at `.copilot-main/` for multi-br
 |---|---|
 | `RegisterDto` name field | Current `RegisterDto` uses a single `name` field. Some consumers may expect `firstName`/`lastName`. Standardize before adding profile editing. |
 | Cart → Checkout E2E | Full cart-to-confirmation flow requires Playwright end-to-end tests. Currently covered only at unit/integration level. |
-| CSV/Excel report exports | `ReportsController` is implemented but Blob Storage write-back for exports is not yet wired up. |
 | `stoutdoorswebdev` cleanup | Old Blob static website storage account can be safely deleted after confirming SWA is the stable frontend host. |
 | `func-outdoors-dev` health | Functions app returned `503` on initial provisioning. Needs follow-up verification that the Flex Consumption plan is correctly configured. |
 | CORS origins update | After SWA migration, `AllowedOrigins__*` on `app-outdoors-api-dev` should be updated to include the SWA hostname and remove the old `stoutdoorswebdev` origin. |
