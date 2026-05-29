@@ -89,3 +89,4 @@
 - Session log: .squad/log/2026-05-29T01:22:55.575Z-scribe-session.md
 - decisions.md size: 54039 bytes; inbox processed: 0; archival: none moved.
 
+- 2026-05-29T01:55:59Z UTC: Diagnosed gated deploy job; outcome saved to 2026-05-29T01-55-59Z-cinnamon.md.

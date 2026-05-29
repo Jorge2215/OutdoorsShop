@@ -48,3 +48,4 @@
 - Recorded the AppDbContextFactory design-time configuration update in `.squad/decisions.md`.
 - Logged that design-time EF now loads appsettings, environment-specific appsettings, API user secrets, and environment variables, with no silent local SQL fallback and a clear exception on missing `DefaultConnection`.
 - Wrote matching session/orchestration entries for the validated build/tests and design-time EF info run.
+- 2026-05-29T01:55:59Z UTC: Scribe created orchestration log and session log; ran decisions archive check (no entries moved).
