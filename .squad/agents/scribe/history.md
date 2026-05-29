@@ -16,6 +16,11 @@
 
 <!-- Append learnings below -->
 
+### 2026-05-28T21:14:05.618-03:00 — Catalog MVP commit/push
+- Only catalog MVP files (API, frontend, tests, .squad/skills) staged and committed
+- Commit message details unified query, debounced React filters, and test coverage
+- Push to `dev` succeeded; PR creation blocked by GitHub CLI auth (user must run `gh auth login`)
+
 ### 2026-05-27 — Azure Storage Queue & StockUpdate Function
 - Order creation and admin inventory updates both enqueue `StockUpdateMessage` to `stock-updates` queue
 - Function `StockUpdate` ([QueueTrigger("stock-updates")]) often no-ops due to prior DB/log update in API
