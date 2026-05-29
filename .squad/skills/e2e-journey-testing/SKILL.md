@@ -85,6 +85,34 @@ $products | Select-Object -First 4 | ForEach-Object {
 `login.accessToken` (not `token` or `jwt`). Refresh token is in an `HttpOnly` cookie `refreshToken`.  
 **Note:** `POST /api/v1/auth/register` also returns `accessToken` directly — no second login needed after signup.
 
+## Read-only smoke probe checklist (verified 2026-05-28T23:14:22.978-03:00)
+
+Use this when you need a safe, non-mutating deployment check before deeper E2E work:
+
+```powershell
+$apiBase = "https://app-outdoors-api-dev.azurewebsites.net"
+
+Invoke-WebRequest -UseBasicParsing "$apiBase/api/health"              # expect 200
+Invoke-WebRequest -UseBasicParsing "$apiBase/swagger/index.html"      # expect 200
+Invoke-WebRequest -UseBasicParsing "$apiBase/swagger/v1/swagger.json" # expect 200
+Invoke-WebRequest -UseBasicParsing "$apiBase/api/v1/products"         # expect 200
+```
+
+Expected auth-edge results:
+
+| Route | Expected status | Why |
+|------|-----------------|-----|
+| `GET /api/v1/auth/me` | 401 | Bearer token required |
+| `POST /api/v1/auth/refresh` without cookie | 401 | HttpOnly refresh cookie required |
+| `POST /api/v1/auth/login` with bad password | 401 | Credential rejection |
+| `POST /api/v1/auth/login` with valid password | 200 | Returns `accessToken` and sets `refreshToken` cookie |
+| `GET /api/v1/auth/me` with bearer token | 200 | Confirms token usability |
+| `GET /api/v1/products?includeInactive=true` anonymously | 403 | Admin role gate works |
+
+## Swagger warning
+
+`swagger/v1/swagger.json` currently exposes protected routes but does **not** mark them with bearer security metadata. Verify auth requirements from controller attributes and live HTTP statuses, not Swagger badges alone.
+
 ## Orders list response shape
 `GET /api/v1/Orders` returns a **paginated object**, not a plain array:
 ```json

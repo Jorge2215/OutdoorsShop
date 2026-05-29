@@ -5,6 +5,11 @@
 
 ## Learnings
 
+### 2026-05-28T23:14:22.978-03:00 — Live route recheck and next backend action
+- Rechecked the dev API live at `https://app-outdoors-api-dev.azurewebsites.net`: `/api/health` returns `200`, `/swagger` redirects to Swagger UI, `/swagger/index.html` returns `200`, `/swagger/v1/swagger.json` loads, `POST /api/v1/auth/login` returns `400` on empty JSON, `GET /api/v1/auth/me` returns `401` without a bearer token, and `GET /api/v1/products` returns `200` with catalog data.
+- Live Swagger currently exposes the expected auth/products/health surface plus the async report-export routes, so the deployed app matches `Program.cs` controller mapping for the backend routes checked and is not the blocker right now.
+- The immediate backend action remains local source repair: `src\OutdoorsShop.Api\Controllers\ProductsController.cs` still has unresolved merge artifacts, and `dotnet build OutdoorsShop.slnx --nologo` fails there with 12 compile errors, so fix that controller before the next API redeploy.
+
 ### 2026-05-28T01:36:33.323-03:00 — Backend deploy reference comparison
 - Push run `26551166403` on commit `a5868e2` is not a true backend deploy reference: that version of `.github\workflows\backend.yml` only restored, built, and tested, so its success never exercised publish or Azure deployment.
 - Push run `26553116007` on commit `94aed83` proves the repo-side publish path is healthy: restore, build, test, linux-x64 publish, packaging, and artifact upload all succeeded before the deploy job failed at `azure/login@v2`.
@@ -80,6 +85,12 @@
 - Catalog filtering now flows through `IProductRepository.SearchProductsAsync` / `src\OutdoorsShop.Infrastructure\Repositories\ProductRepository.cs`, which composes search, category, and price predicates with AND logic and applies sorting after filtering.
 - Allowed sort values are `name_asc`, `price_asc`, and `price_desc`; invalid values fall back to `name_asc`, and `minPrice > maxPrice` returns an empty array instead of a 400.
 - Coverage for this contract lives in `tests\OutdoorsShop.Api.Tests\Controllers\ProductsControllerTests.cs`, `tests\OutdoorsShop.Api.Tests\Repositories\ProductRepositoryTests.cs`, and `tests\OutdoorsShop.Api.Tests\Integration\ProductsIntegrationTests.cs`.
+
+### 2026-05-28T23:14:22.978-03:00 — Live route verification after deploy
+- Live dev App Service `https://app-outdoors-api-dev.azurewebsites.net` currently responds on `/api/health` (`200 {"status":"ok"}`), `/swagger`, `/swagger/index.html`, `/swagger/v1/swagger.json`, `POST /api/v1/auth/login` (`400` with model validation on empty JSON), `GET /api/v1/auth/me` (`401` without a bearer token), and `GET /api/v1/products` (`200` with catalog JSON).
+- The live OpenAPI document includes `/api/health`, `/api/v1/auth/{register,login,refresh,logout,me}`, and `/api/v1/products`, `/api/v1/products/{id}`, `/api/v1/products/{id}/image`; that matches `Program.cs` controller mapping plus the explicit health endpoint for the auth/products surface we checked.
+- Local source is now drifted/broken even though the deployed app is healthy: `src\OutdoorsShop.Api\Controllers\ProductsController.cs` contains unresolved merge markers and `dotnet build OutdoorsShop.slnx --nologo` fails there with 12 compile errors, so the next backend action is to resolve that controller conflict before any further API redeploy.
+
 ## 2026-05-29T01:05:57.2395908Z — Scribe update
 - Archived 0 decisions; merged 14 inbox files.
 
