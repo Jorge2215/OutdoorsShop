@@ -113,5 +113,51 @@ public class ProductsIntegrationTests : IClassFixture<TestWebAppFactory>
         var json = await response.Content.ReadAsStringAsync();
         json.Should().NotBeNullOrEmpty();
     }
-}
 
+    [Fact]
+    public async Task GetProducts_ComposesSearchCategoryAndPriceFilters()
+    {
+        var response = await _client.GetAsync("/api/v1/products?categoryId=1&search=Bag&minPrice=50&maxPrice=60&sort=price_desc");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await response.Content.ReadAsStringAsync();
+        json.Should().Contain("Sleeping Bag");
+        json.Should().NotContain("Camping Tent");
+        json.Should().NotContain("Trekking Boots");
+    }
+
+    [Fact]
+    public async Task GetProducts_FallsBackToNameAscending_WhenSortIsInvalid()
+    {
+        var response = await _client.GetAsync("/api/v1/products?categoryId=1&sort=popular");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await response.Content.ReadAsStringAsync();
+        json.IndexOf("Camping Tent", StringComparison.Ordinal).Should().BeLessThan(json.IndexOf("Sleeping Bag", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetProducts_SortsByPriceDescending_WhenRequested()
+    {
+        var response = await _client.GetAsync("/api/v1/products?sort=price_desc");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await response.Content.ReadAsStringAsync();
+        json.IndexOf("Road Bike", StringComparison.Ordinal).Should().BeLessThan(json.IndexOf("Camping Tent", StringComparison.Ordinal));
+        json.IndexOf("Camping Tent", StringComparison.Ordinal).Should().BeLessThan(json.IndexOf("Sleeping Bag", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetProducts_ReturnsEmptyArray_WhenMinPriceExceedsMaxPrice()
+    {
+        var response = await _client.GetAsync("/api/v1/products?minPrice=200&maxPrice=100");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var json = await response.Content.ReadAsStringAsync();
+        json.Should().Be("[]");
+    }
+}

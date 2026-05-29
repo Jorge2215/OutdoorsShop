@@ -28,22 +28,25 @@ public class ProductsController : ControllerBase
         _blobStorage = blobStorage;
     }
 
-    // GET /api/v1/products?categoryId=1&search=tent
+    /// <summary>
+    /// Returns the product catalog filtered by the supplied query parameters.
+    /// </summary>
+    /// <param name="categoryId">Optional category filter.</param>
+    /// <param name="search">Optional text search applied to the product name and description.</param>
+    /// <param name="minPrice">Optional inclusive minimum price filter.</param>
+    /// <param name="maxPrice">Optional inclusive maximum price filter.</param>
+    /// <param name="sort">Optional sort value: <c>name_asc</c> (default), <c>price_asc</c>, or <c>price_desc</c>. Invalid values fall back to <c>name_asc</c>.</param>
     [HttpGet]
     [AllowAnonymous]
     [ProducesResponseType(typeof(IEnumerable<ProductDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(
         [FromQuery] int? categoryId,
-        [FromQuery] string? search)
+        [FromQuery] string? search,
+        [FromQuery] decimal? minPrice,
+        [FromQuery] decimal? maxPrice,
+        [FromQuery] string? sort)
     {
-        IEnumerable<Product> products;
-
-        if (!string.IsNullOrWhiteSpace(search))
-            products = await _productRepo.SearchAsync(search);
-        else if (categoryId.HasValue)
-            products = await _productRepo.GetByCategoryAsync(categoryId.Value);
-        else
-            products = await _productRepo.GetAllAsync();
+        var products = await _productRepo.SearchProductsAsync(search, categoryId, minPrice, maxPrice, sort);
 
         var productIds = products.Select(p => p.ProductID).ToList();
         var allInventory = new Dictionary<int, int>();

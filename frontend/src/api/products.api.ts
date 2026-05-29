@@ -2,6 +2,17 @@ import type { Category } from '../types/category'
 import type { Product, ProductUpsertRequest } from '../types/product'
 import { fetchWithAuth, fetchWithAuthMultipart, request } from './client'
 
+export type ProductListSort = 'name_asc' | 'price_asc' | 'price_desc'
+
+export interface ProductListParams {
+  categoryId?: number
+  search?: string
+  includeInactive?: boolean
+  minPrice?: number
+  maxPrice?: number
+  sort?: ProductListSort
+}
+
 interface RawProduct {
   productID: number
   name: string
@@ -36,7 +47,7 @@ function mapProduct(product: RawProduct): Product {
   }
 }
 
-function buildQuery(params?: { categoryId?: number; search?: string; includeInactive?: boolean }) {
+function buildQuery(params?: ProductListParams) {
   const query = new URLSearchParams()
   if (params?.categoryId) {
     query.set('categoryId', String(params.categoryId))
@@ -46,6 +57,15 @@ function buildQuery(params?: { categoryId?: number; search?: string; includeInac
   }
   if (params?.includeInactive) {
     query.set('includeInactive', 'true')
+  }
+  if (params?.minPrice !== undefined) {
+    query.set('minPrice', String(params.minPrice))
+  }
+  if (params?.maxPrice !== undefined) {
+    query.set('maxPrice', String(params.maxPrice))
+  }
+  if (params?.sort) {
+    query.set('sort', params.sort)
   }
   const value = query.toString()
   return value ? `?${value}` : ''
@@ -63,7 +83,7 @@ function mapPayload(product: ProductUpsertRequest) {
 }
 
 export const productsApi = {
-  async list(params?: { categoryId?: number; search?: string; includeInactive?: boolean }) {
+  async list(params?: ProductListParams) {
     const response = await request<RawProduct[]>(`/products${buildQuery(params)}`)
     return response.map(mapProduct)
   },
@@ -101,4 +121,3 @@ export const productsApi = {
     return (response as { imageUrl: string }).imageUrl
   },
 }
-
