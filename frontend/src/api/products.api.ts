@@ -84,7 +84,9 @@ function mapPayload(product: ProductUpsertRequest) {
 
 export const productsApi = {
   async list(params?: ProductListParams) {
-    const response = await request<RawProduct[]>(`/products${buildQuery(params)}`)
+    const response = params?.includeInactive
+      ? await fetchWithAuth<RawProduct[]>(`/products${buildQuery(params)}`)
+      : await request<RawProduct[]>(`/products${buildQuery(params)}`)
     return response.map(mapProduct)
   },
   async getById(id: number) {

@@ -96,6 +96,45 @@ public class ProductsControllerTests
     }
 
     [Fact]
+    public async Task GetAll_ReturnsForbidden_WhenIncludeInactiveRequestedByNonAdmin()
+    {
+        var controller = CreateController("Customer");
+
+        var result = await controller.GetAll(categoryId: null, search: null, minPrice: null, maxPrice: null, sort: null, includeInactive: true);
+
+        result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        _productRepo.Verify(r => r.GetAllIncludingInactiveAsync(), Times.Never);
+        _productRepo.Verify(r => r.SearchProductsAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetAll_FiltersAndSortsInactiveCatalog_WhenIncludeInactiveRequested()
+    {
+        var products = new List<Product>
+        {
+            new() { ProductID = 1, Name = "Budget Tent", CategoryID = 2, Price = 125m, Description = "budget tent", IsActive = true, DiscountMultiplier = 1.0m },
+            new() { ProductID = 2, Name = "Deluxe Tent", CategoryID = 2, Price = 180m, Description = "deluxe tent", IsActive = false, DiscountMultiplier = 1.0m },
+            new() { ProductID = 3, Name = "Camp Chair", CategoryID = 2, Price = 90m, Description = "folding chair", IsActive = false, DiscountMultiplier = 1.0m }
+        };
+
+        _productRepo.Setup(r => r.GetAllIncludingInactiveAsync()).ReturnsAsync(products);
+        _inventoryRepo.Setup(r => r.GetByProductIdAsync(1)).ReturnsAsync(MakeInventory(1, 3));
+        _inventoryRepo.Setup(r => r.GetByProductIdAsync(2)).ReturnsAsync(MakeInventory(2, 6));
+
+        var controller = CreateController("Administrator");
+        var result = await controller.GetAll(categoryId: 2, search: "Tent", minPrice: 100m, maxPrice: 200m, sort: "price_desc", includeInactive: true);
+
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        var dtoList = ok.Value.Should().BeAssignableTo<IEnumerable<ProductDto>>().Subject.ToList();
+
+        dtoList.Select(p => p.ProductID).Should().Equal(2, 1);
+        dtoList.Select(p => p.QuantityAvailable).Should().Equal(6, 3);
+        _productRepo.Verify(r => r.GetAllIncludingInactiveAsync(), Times.Once);
+        _productRepo.Verify(r => r.SearchProductsAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GetById_ReturnsProduct_WhenFound()
     {
         var product = MakeProduct(5);
