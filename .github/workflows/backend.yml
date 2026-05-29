@@ -67,24 +67,24 @@ jobs:
           fi
 
       - name: Publish API artifact
-        if: github.event_name == 'push' && github.ref_name == 'main'
+        if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: dotnet publish src/OutdoorsShop.Api/OutdoorsShop.Api.csproj --configuration Release -r linux-x64 --self-contained false /p:UseAppHost=false --output publish/api
 
       - name: Package API artifact
-        if: github.event_name == 'push' && github.ref_name == 'main'
+        if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           cd publish/api
           zip -r ../api.zip .
 
       - name: Upload API publish artifact
-        if: github.event_name == 'push' && github.ref_name == 'main'
+        if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v4
         with:
           name: api-publish
           path: publish/api.zip
 
   deploy:
-    if: github.event_name == 'push' && github.ref_name == 'main'
+    if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: build-and-test
     runs-on: ubuntu-latest
     environment: prod
@@ -116,7 +116,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Build and publish passed, but deployment cannot authenticate to Azure." >> "$GITHUB_STEP_SUMMARY"
             echo "Missing required configuration value(s): ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
-            echo "Configure them in the 'prod' GitHub environment or as repository secrets, then rerun the push." >> "$GITHUB_STEP_SUMMARY"
+            echo "Configure them in the 'prod' GitHub environment or as repository secrets, then rerun the backend workflow from main." >> "$GITHUB_STEP_SUMMARY"
             echo "::error title=Missing Azure deployment configuration::Build and publish succeeded, but deployment is blocked until ${missing[*]} are configured for the 'prod' environment or repository."
             exit 1
           fi
