@@ -60,11 +60,11 @@ public class ProductsControllerTests
     public async Task GetAll_ReturnsOkWithProducts_WhenNoFiltersApplied()
     {
         var products = new List<Product> { MakeProduct(1), MakeProduct(2) };
-        _productRepo.Setup(r => r.GetAllAsync()).ReturnsAsync(products);
+        _productRepo.Setup(r => r.SearchProductsAsync(null, null, null, null, null)).ReturnsAsync(products);
         _inventoryRepo.Setup(r => r.GetByProductIdAsync(It.IsAny<int>())).ReturnsAsync((ProductInventory?)null);
 
         var controller = CreateController();
-        var result = await controller.GetAll(null, null);
+        var result = await controller.GetAll(null, null, null, null, null);
 
         result.Should().BeOfType<OkObjectResult>()
             .Which.Value.Should().BeAssignableTo<IEnumerable<ProductDto>>()
@@ -72,20 +72,26 @@ public class ProductsControllerTests
     }
 
     [Fact]
-    public async Task GetAll_FiltersByCategory_WhenCategoryIdProvided()
+    public async Task GetAll_ForwardsCombinedFiltersToRepository()
     {
+        const string search = "tent";
+        const string sort = "price_desc";
         var products = new List<Product> { MakeProduct(1, categoryId: 2) };
-        _productRepo.Setup(r => r.GetByCategoryAsync(2)).ReturnsAsync(products);
+        _productRepo
+            .Setup(r => r.SearchProductsAsync(search, 2, 50m, 200m, sort))
+            .ReturnsAsync(products);
         _inventoryRepo.Setup(r => r.GetByProductIdAsync(It.IsAny<int>())).ReturnsAsync((ProductInventory?)null);
 
         var controller = CreateController();
-        var result = await controller.GetAll(categoryId: 2, search: null);
+        var result = await controller.GetAll(categoryId: 2, search: search, minPrice: 50m, maxPrice: 200m, sort: sort);
 
         result.Should().BeOfType<OkObjectResult>()
             .Which.Value.Should().BeAssignableTo<IEnumerable<ProductDto>>()
             .Which.Should().HaveCount(1);
 
-        _productRepo.Verify(r => r.GetByCategoryAsync(2), Times.Once);
+        _productRepo.Verify(r => r.SearchProductsAsync(search, 2, 50m, 200m, sort), Times.Once);
+        _productRepo.Verify(r => r.GetByCategoryAsync(It.IsAny<int>()), Times.Never);
+        _productRepo.Verify(r => r.SearchAsync(It.IsAny<string>()), Times.Never);
         _productRepo.Verify(r => r.GetAllAsync(), Times.Never);
     }
 
