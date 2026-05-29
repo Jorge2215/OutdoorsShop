@@ -11,6 +11,10 @@ namespace OutdoorsShop.Api.Controllers;
 [Produces("application/json")]
 public class ProductsController : ControllerBase
 {
+    private const string DefaultSort = "name_asc";
+    private const string PriceAscendingSort = "price_asc";
+    private const string PriceDescendingSort = "price_desc";
+
     private readonly IProductRepository _productRepo;
     private readonly IInventoryRepository _inventoryRepo;
     private readonly ICategoryRepository _categoryRepo;
@@ -36,6 +40,7 @@ public class ProductsController : ControllerBase
     /// <param name="minPrice">Optional inclusive minimum price filter.</param>
     /// <param name="maxPrice">Optional inclusive maximum price filter.</param>
     /// <param name="sort">Optional sort value: <c>name_asc</c> (default), <c>price_asc</c>, or <c>price_desc</c>. Invalid values fall back to <c>name_asc</c>.</param>
+    /// <param name="includeInactive">When true, administrators can include inactive products in the response.</param>
     [HttpGet]
     [AllowAnonymous]
     [ProducesResponseType(typeof(IEnumerable<ProductDto>), StatusCodes.Status200OK)]
@@ -45,34 +50,29 @@ public class ProductsController : ControllerBase
         [FromQuery] string? search,
         [FromQuery] decimal? minPrice,
         [FromQuery] decimal? maxPrice,
-        [FromQuery] string? sort)
-    {
-        var products = await _productRepo.SearchProductsAsync(search, categoryId, minPrice, maxPrice, sort);
+        [FromQuery] string? sort,
         [FromQuery] bool includeInactive = false)
     {
         IEnumerable<Product> products;
 
-        if (includeInactive)
+        if (minPrice.HasValue && maxPrice.HasValue && minPrice > maxPrice)
+            products = [];
+        else if (includeInactive)
         {
             var unauthorized = EnsureAdminCanIncludeInactive();
             if (unauthorized is not null)
                 return unauthorized;
 
             products = await _productRepo.GetAllIncludingInactiveAsync();
-
-            if (!string.IsNullOrWhiteSpace(search))
-                products = products.Where(p => p.Name.Contains(search) ||
-                                               (p.Description != null && p.Description.Contains(search)));
-            else if (categoryId.HasValue)
-                products = products.Where(p => p.CategoryID == categoryId.Value);
         }
-        else if (!string.IsNullOrWhiteSpace(search))
-            products = await _productRepo.SearchAsync(search);
-        else if (categoryId.HasValue)
-            products = await _productRepo.GetByCategoryAsync(categoryId.Value);
         else
-            products = await _productRepo.GetAllAsync();
->>>>>>> origin/main
+            products = await _productRepo.SearchProductsAsync(search, categoryId, minPrice, maxPrice, sort);
+
+        if (includeInactive)
+        {
+            products = ApplyProductFilters(products, search, categoryId, minPrice, maxPrice);
+            products = ApplyProductSort(products, sort);
+        }
 
         var productIds = products.Select(p => p.ProductID).ToList();
         var allInventory = new Dictionary<int, int>();
@@ -244,6 +244,55 @@ public class ProductsController : ControllerBase
             ? null
             : StatusCode(StatusCodes.Status403Forbidden,
                 new { message = "Administrator role is required to include inactive products." });
+
+    private static IEnumerable<Product> ApplyProductFilters(
+        IEnumerable<Product> products,
+        string? search,
+        int? categoryId,
+        decimal? minPrice,
+        decimal? maxPrice)
+    {
+        var filteredProducts = products;
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            filteredProducts = filteredProducts.Where(p => p.Name.Contains(search) ||
+                (p.Description != null && p.Description.Contains(search)));
+        }
+
+        if (categoryId.HasValue)
+            filteredProducts = filteredProducts.Where(p => p.CategoryID == categoryId.Value);
+
+        if (minPrice.HasValue)
+            filteredProducts = filteredProducts.Where(p => p.Price >= minPrice.Value);
+
+        if (maxPrice.HasValue)
+            filteredProducts = filteredProducts.Where(p => p.Price <= maxPrice.Value);
+
+        return filteredProducts;
+    }
+
+    private static IEnumerable<Product> ApplyProductSort(IEnumerable<Product> products, string? sort)
+        => NormalizeSort(sort) switch
+        {
+            PriceAscendingSort => products.OrderBy(p => p.Price).ThenBy(p => p.Name),
+            PriceDescendingSort => products.OrderByDescending(p => p.Price).ThenBy(p => p.Name),
+            _ => products.OrderBy(p => p.Name)
+        };
+
+    private static string NormalizeSort(string? sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort))
+            return DefaultSort;
+
+        return sort.Trim().ToLowerInvariant() switch
+        {
+            PriceAscendingSort => PriceAscendingSort,
+            PriceDescendingSort => PriceDescendingSort,
+            DefaultSort => DefaultSort,
+            _ => DefaultSort
+        };
+    }
 
     private static ProductDto ToDto(Product p, int quantityAvailable) => new()
     {
