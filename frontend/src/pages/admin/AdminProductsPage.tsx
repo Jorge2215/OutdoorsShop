@@ -1,6 +1,7 @@
 import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { categoriesApi } from '../../api/categories.api'
+import { ApiError } from '../../api/client'
 import { inventoryApi } from '../../api/inventory.api'
 import { productsApi } from '../../api/products.api'
 import { Alert } from '../../components/ui/Alert'
@@ -23,6 +24,14 @@ const emptyForm: ProductUpsertRequest = {
   imageUrl: '',
   categoryId: 0,
   isActive: true,
+}
+
+function getInventoryLoadErrorMessage(productId: number, error: unknown) {
+  if (error instanceof ApiError && error.status === 404) {
+    return `Inventory record for product ${productId} is missing in the backend.`
+  }
+
+  return error instanceof Error ? error.message : 'Unable to load stock details.'
 }
 
 export default function AdminProductsPage() {
@@ -82,7 +91,7 @@ export default function AdminProductsPage() {
 
       setInventoryDetails(null)
       setStockDraft('')
-      setInventoryError(caughtError instanceof Error ? caughtError.message : 'Unable to load stock details.')
+      setInventoryError(getInventoryLoadErrorMessage(productId, caughtError))
     } finally {
       if (inventoryRequestId.current === requestId) {
         setInventoryLoading(false)

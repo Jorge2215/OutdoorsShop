@@ -134,6 +134,15 @@ using (var scope = app.Services.CreateScope())
     {
         logger.LogInformation("Admin user already exists: {Email}", adminEmail);
     }
+
+    var inventoryRepository = scope.ServiceProvider.GetRequiredService<IInventoryRepository>();
+    var backfilledInventoryCount = await inventoryRepository.EnsureForAllProductsAsync();
+    if (backfilledInventoryCount > 0)
+    {
+        logger.LogInformation(
+            "Backfilled missing inventory rows for {BackfilledInventoryCount} existing products during startup.",
+            backfilledInventoryCount);
+    }
 }
 
 app.Run();

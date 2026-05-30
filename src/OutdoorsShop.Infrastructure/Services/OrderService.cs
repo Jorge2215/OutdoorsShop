@@ -148,7 +148,7 @@ public class OrderService : IOrderService
             if (product is null)
                 return OperationResult<OrderDto>.Invalid($"Product {groupedItems.Key} not found or inactive.");
 
-            var inventory = await _inventoryRepository.GetByProductIdAsync(groupedItems.Key);
+            var inventory = await _inventoryRepository.EnsureForProductIdAsync(groupedItems.Key);
             if (inventory is null)
                 return OperationResult<OrderDto>.Invalid($"Inventory for product {groupedItems.Key} not found.");
 
