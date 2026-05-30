@@ -45,6 +45,10 @@ export const inventoryApi = {
     const response = await fetchWithAuth<RawPagedResult<RawInventoryItem>>(`/inventory?pageNumber=${pageNumber}&pageSize=${pageSize}`)
     return mapPagedResult(response)
   },
+  async getByProductId(productId: number) {
+    const response = await fetchWithAuth<RawInventoryItem>(`/inventory/${productId}`)
+    return mapInventory(response)
+  },
   async getLowStock() {
     const response = await fetchWithAuth<RawInventoryItem[]>('/inventory/low-stock')
     return response.map(mapInventory)
@@ -57,4 +61,3 @@ export const inventoryApi = {
     return mapInventory(response)
   },
 }
-

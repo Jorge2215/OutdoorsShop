@@ -1,6 +1,7 @@
 import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { categoriesApi } from '../../api/categories.api'
+import { inventoryApi } from '../../api/inventory.api'
 import { productsApi } from '../../api/products.api'
 import { Alert } from '../../components/ui/Alert'
 import { Badge } from '../../components/ui/Badge'
@@ -11,8 +12,9 @@ import { Modal } from '../../components/ui/Modal'
 import { Spinner } from '../../components/ui/Spinner'
 import { ProductImageUpload } from '../../components/products/ProductImageUpload'
 import { useAsyncData } from '../../hooks/useAsyncData'
+import type { InventoryItem } from '../../types/inventory'
 import type { Product, ProductUpsertRequest } from '../../types/product'
-import { formatCurrency } from '../../utils/format'
+import { formatCurrency, formatDate } from '../../utils/format'
 
 const emptyForm: ProductUpsertRequest = {
   name: '',
@@ -36,13 +38,63 @@ export default function AdminProductsPage() {
   const [form, setForm] = useState<ProductUpsertRequest>(emptyForm)
   const [actionError, setActionError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [inventoryDetails, setInventoryDetails] = useState<InventoryItem | null>(null)
+  const [inventoryLoading, setInventoryLoading] = useState(false)
+  const [inventoryError, setInventoryError] = useState<string | null>(null)
+  const [stockDraft, setStockDraft] = useState('')
+  const inventoryRequestId = useRef(0)
 
   const activeCategories = useMemo(() => data?.categories.filter((category) => category.isActive) ?? [], [data?.categories])
+  const stockEditingReady = editing !== null && inventoryDetails !== null && !inventoryLoading && !inventoryError
+
+  const resetInventoryState = () => {
+    inventoryRequestId.current += 1
+    setInventoryDetails(null)
+    setInventoryLoading(false)
+    setInventoryError(null)
+    setStockDraft('')
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditing(null)
+    setActionError(null)
+    resetInventoryState()
+  }
+
+  const loadInventoryDetails = async (productId: number) => {
+    const requestId = ++inventoryRequestId.current
+    setInventoryLoading(true)
+    setInventoryError(null)
+
+    try {
+      const inventory = await inventoryApi.getByProductId(productId)
+      if (inventoryRequestId.current !== requestId) {
+        return
+      }
+
+      setInventoryDetails(inventory)
+      setStockDraft(String(inventory.quantityAvailable))
+    } catch (caughtError) {
+      if (inventoryRequestId.current !== requestId) {
+        return
+      }
+
+      setInventoryDetails(null)
+      setStockDraft('')
+      setInventoryError(caughtError instanceof Error ? caughtError.message : 'Unable to load stock details.')
+    } finally {
+      if (inventoryRequestId.current === requestId) {
+        setInventoryLoading(false)
+      }
+    }
+  }
 
   const openCreate = () => {
     setEditing(null)
     setForm({ ...emptyForm, categoryId: activeCategories[0]?.id ?? 0 })
     setActionError(null)
+    resetInventoryState()
     setModalOpen(true)
   }
 
@@ -58,23 +110,65 @@ export default function AdminProductsPage() {
     })
     setActionError(null)
     setModalOpen(true)
+    resetInventoryState()
+    void loadInventoryDetails(product.id)
   }
 
   const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const normalizedStock = stockDraft.trim()
+    const stockValue = normalizedStock === '' ? Number.NaN : Number(normalizedStock)
+    const shouldUpdateStock =
+      Boolean(editing) &&
+      inventoryDetails !== null &&
+      !inventoryLoading &&
+      normalizedStock !== '' &&
+      stockValue !== inventoryDetails.quantityAvailable
+
+    if (editing && inventoryDetails && (!Number.isInteger(stockValue) || stockValue < 0)) {
+      setActionError('Stock available must be a whole number of 0 or more.')
+      return
+    }
+
     setSaving(true)
     setActionError(null)
 
+    let productSaved = false
+
     try {
+      let latestInventory: InventoryItem | null = null
+
+      if (editing && shouldUpdateStock) {
+        latestInventory = await inventoryApi.getByProductId(editing.id)
+      }
+
       if (editing) {
         await productsApi.update(editing.id, form)
       } else {
         await productsApi.create(form)
       }
-      setModalOpen(false)
+      productSaved = true
+
+      if (editing && latestInventory) {
+        const updatedInventory = await inventoryApi.update(editing.id, {
+          quantityAvailable: stockValue,
+          reorderThreshold: latestInventory.reorderThreshold,
+        })
+
+        setInventoryDetails(updatedInventory)
+        setStockDraft(String(updatedInventory.quantityAvailable))
+      }
+
+      closeModal()
       reload()
     } catch (caughtError) {
-      setActionError(caughtError instanceof Error ? caughtError.message : 'Unable to save the product.')
+      const message = caughtError instanceof Error ? caughtError.message : 'Unable to save the product.'
+      if (productSaved && editing && shouldUpdateStock) {
+        setActionError(`Product details were saved, but stock was not updated. ${message}`)
+        reload()
+      } else {
+        setActionError(message)
+      }
     } finally {
       setSaving(false)
     }
@@ -172,7 +266,7 @@ export default function AdminProductsPage() {
         )}
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? `Edit ${editing.name}` : 'Create product'}>
+      <Modal open={modalOpen} onClose={closeModal} title={editing ? `Edit ${editing.name}` : 'Create product'}>
         <form className="grid gap-5 md:grid-cols-2" onSubmit={handleSave}>
           <Input label="Name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
           <label className="block">
@@ -186,6 +280,71 @@ export default function AdminProductsPage() {
           <div className="md:col-span-2">
             <Textarea label="Description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
           </div>
+          {editing ? (
+            <div className="md:col-span-2 rounded-[1.75rem] border border-gold/30 bg-white/60 p-5 shadow-gold">
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)] md:items-start">
+                {stockEditingReady ? (
+                  <Input
+                    label="Stock available"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={stockDraft}
+                    disabled={saving}
+                    onChange={(event) => setStockDraft(event.target.value)}
+                  />
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-gold/35 bg-parchment/55 p-4">
+                    <p className="field-label">Stock available</p>
+                    <p className="mt-3 text-sm text-ink/70">
+                      {inventoryLoading
+                        ? 'Loading inventory details before stock can be edited.'
+                        : 'Stock editing is unavailable until inventory loads successfully.'}
+                    </p>
+                  </div>
+                )}
+                <div className="rounded-2xl border border-gold/25 bg-parchment/80 p-4 text-sm text-ink/75">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-ink/55">Inventory settings</p>
+                  {inventoryLoading ? (
+                    <div className="mt-3 flex items-center gap-3 text-ink/70">
+                      <Spinner className="h-5 w-5 border-2" />
+                      <span>Loading current stock and threshold…</span>
+                    </div>
+                  ) : stockEditingReady ? (
+                    <div className="mt-3 space-y-2">
+                      <p>
+                        Reorder threshold stays at <span className="font-semibold text-ink">{inventoryDetails.reorderThreshold}</span>.
+                      </p>
+                      <p>Last inventory update {formatDate(inventoryDetails.lastUpdated)}.</p>
+                      <p className="text-ink/60">Use Admin inventory if you need to change the reorder threshold itself.</p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2 text-ink/65">
+                      <p>Product details can still be saved, but stock will stay unchanged until inventory loads successfully.</p>
+                      {inventoryError ? <p className="text-crimson/85">{inventoryError}</p> : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {inventoryError ? (
+                <div className="mt-4">
+                  <Alert
+                    tone="error"
+                    title="Stock details unavailable"
+                    message={`${inventoryError} Product details can still be saved, but stock will not change until inventory loads successfully.`}
+                  />
+                </div>
+              ) : inventoryLoading ? (
+                <div className="mt-4">
+                  <Alert
+                    tone="info"
+                    title="Stock editing temporarily locked"
+                    message="You can keep editing product details and save them now, but stock stays read-only until the inventory request finishes."
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <label className="inline-flex items-center gap-3 text-sm font-semibold text-ink md:col-span-2">
             <input type="checkbox" checked={form.isActive ?? true} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} /> Active product
           </label>
@@ -201,7 +360,7 @@ export default function AdminProductsPage() {
           )}
           {actionError ? <div className="md:col-span-2"><Alert tone="error" title="Action failed" message={actionError} /></div> : null}
           <div className="flex justify-end gap-3 md:col-span-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={closeModal}>Cancel</Button>
             <Button type="submit" loading={saving}>{editing ? 'Save changes' : 'Create product'}</Button>
           </div>
         </form>
@@ -209,4 +368,3 @@ export default function AdminProductsPage() {
     </div>
   )
 }
-
