@@ -32,6 +32,7 @@ public class InventoryService : IInventoryService
     {
         var normalizedPageNumber = Math.Max(1, pageNumber);
         var normalizedPageSize = Math.Clamp(pageSize, 1, 100);
+        await _inventoryRepository.EnsureForAllProductsAsync();
         var (items, totalCount) = await _inventoryRepository.GetPagedAsync(normalizedPageNumber, normalizedPageSize);
 
         return new PagedResult<InventoryDto>
@@ -45,7 +46,7 @@ public class InventoryService : IInventoryService
 
     public async Task<OperationResult<InventoryDto>> GetByProductIdAsync(int productId)
     {
-        var inventory = await _inventoryRepository.GetByProductIdAsync(productId);
+        var inventory = await _inventoryRepository.EnsureForProductIdAsync(productId);
         if (inventory is null)
             return OperationResult<InventoryDto>.NotFoundResult($"Inventory for product {productId} not found.");
 
@@ -57,7 +58,7 @@ public class InventoryService : IInventoryService
         if (request.QuantityAvailable is null && request.ReorderThreshold is null)
             return OperationResult<InventoryDto>.Invalid("Provide QuantityAvailable and/or ReorderThreshold.");
 
-        var inventory = await _inventoryRepository.GetByProductIdAsync(productId);
+        var inventory = await _inventoryRepository.EnsureForProductIdAsync(productId);
         if (inventory is null)
             return OperationResult<InventoryDto>.NotFoundResult($"Inventory for product {productId} not found.");
 
@@ -118,12 +119,14 @@ public class InventoryService : IInventoryService
 
     public async Task<IReadOnlyList<InventoryDto>> GetLowStockAsync()
     {
+        await _inventoryRepository.EnsureForAllProductsAsync();
         var items = await _inventoryRepository.GetLowStockAsync();
         return items.Select(MapToDto).ToList();
     }
 
     public async Task<IReadOnlyList<InventoryReportRowDto>> GetReportRowsAsync()
     {
+        await _inventoryRepository.EnsureForAllProductsAsync();
         var items = await _inventoryRepository.GetAllAsync();
         return items.Select(item => new InventoryReportRowDto
         {

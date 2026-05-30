@@ -72,6 +72,7 @@ public class ProductsController : ControllerBase
         {
             products = ApplyProductFilters(products, search, categoryId, minPrice, maxPrice);
             products = ApplyProductSort(products, sort);
+            await _inventoryRepo.EnsureForAllProductsAsync();
         }
 
         var productIds = products.Select(p => p.ProductID).ToList();
@@ -108,7 +109,9 @@ public class ProductsController : ControllerBase
         if (product is null)
             return NotFound(new { message = $"Product {id} not found." });
 
-        var inventory = await _inventoryRepo.GetByProductIdAsync(id);
+        var inventory = includeInactive
+            ? await _inventoryRepo.EnsureForProductIdAsync(id)
+            : await _inventoryRepo.GetByProductIdAsync(id);
         return Ok(ToDto(product, inventory?.QuantityAvailable ?? 0));
     }
 
@@ -180,7 +183,7 @@ public class ProductsController : ControllerBase
         await _productRepo.UpdateAsync(product);
         await _productRepo.SaveChangesAsync();
 
-        var inventory = await _inventoryRepo.GetByProductIdAsync(id);
+        var inventory = await _inventoryRepo.EnsureForProductIdAsync(id);
         return Ok(ToDto(product, inventory?.QuantityAvailable ?? 0));
     }
 
