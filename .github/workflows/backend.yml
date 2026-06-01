@@ -121,6 +121,7 @@ jobs:
       AZURE_CLIENT_ID: c0fed59f-52ae-4a13-83e7-f89844c039a6
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_SQL_CONNECTION_STRING: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
 
     steps:
       - name: Download migration bundle artifact
@@ -163,6 +164,12 @@ jobs:
       - name: Resolve live SQL connection string
         shell: bash
         run: |
+          if [ -n "$AZURE_SQL_CONNECTION_STRING" ]; then
+            echo "::add-mask::$AZURE_SQL_CONNECTION_STRING"
+            echo "AZURE_SQL_CONNECTION_STRING=$AZURE_SQL_CONNECTION_STRING" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           raw_sql_connection=$(az webapp config appsettings list \
             --name "$AZURE_WEBAPP_NAME" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
