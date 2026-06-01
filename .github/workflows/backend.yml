@@ -74,7 +74,8 @@ jobs:
         if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         env:
           ConnectionStrings__DefaultConnection: Server=tcp:placeholder.database.windows.net,1433;Initial Catalog=OutdoorsShop;User ID=placeholder;Password=Placeholder123!;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
-        shell: bash        run: |
+        shell: bash
+        run: |
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet ef migrations bundle \
             --project src/OutdoorsShop.Infrastructure/OutdoorsShop.Infrastructure.csproj \
@@ -172,4 +173,5 @@ jobs:
 
       - name: Smoke test API health
         run: curl --fail --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 "$API_HEALTH_URL"
+
 
