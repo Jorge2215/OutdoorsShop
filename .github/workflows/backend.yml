@@ -163,18 +163,48 @@ jobs:
       - name: Resolve live SQL connection string
         shell: bash
         run: |
-          sql_connection=$(az webapp config appsettings list \
+          raw_sql_connection=$(az webapp config appsettings list \
             --name "$AZURE_WEBAPP_NAME" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --query "[?name=='ConnectionStrings__DefaultConnection'].value | [0]" \
             -o tsv)
 
-          if [ -z "$sql_connection" ]; then
+          if [ -z "$raw_sql_connection" ]; then
             echo "### Backend deploy blocked by live app configuration" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "The only live environment is missing app setting ConnectionStrings__DefaultConnection." >> "$GITHUB_STEP_SUMMARY"
             echo "Restore that app setting on $AZURE_WEBAPP_NAME, then rerun the backend workflow from main." >> "$GITHUB_STEP_SUMMARY"
             echo "::error title=Missing live SQL connection string::ConnectionStrings__DefaultConnection is not configured on $AZURE_WEBAPP_NAME."
+            exit 1
+          fi
+
+          sql_connection="$raw_sql_connection"
+
+          if [[ "$raw_sql_connection" == @Microsoft.KeyVault* ]]; then
+            vault_name=$(printf '%s' "$raw_sql_connection" | sed -n "s/^@Microsoft\.KeyVault([^)]*VaultName=\([^;)]*\).*$/\1/p")
+            secret_name=$(printf '%s' "$raw_sql_connection" | sed -n "s/^@Microsoft\.KeyVault([^)]*SecretName=\([^;)]*\).*$/\1/p")
+            secret_version=$(printf '%s' "$raw_sql_connection" | sed -n "s/^@Microsoft\.KeyVault([^)]*SecretVersion=\([^;)]*\).*$/\1/p")
+
+            if [ -z "$vault_name" ] || [ -z "$secret_name" ]; then
+              echo "### Backend deploy blocked by Key Vault reference parsing" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "ConnectionStrings__DefaultConnection is a Key Vault reference, but VaultName/SecretName could not be parsed." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error title=Invalid Key Vault reference::Could not parse VaultName/SecretName from ConnectionStrings__DefaultConnection."
+              exit 1
+            fi
+
+            if [ -n "$secret_version" ]; then
+              sql_connection=$(az keyvault secret show --vault-name "$vault_name" --name "$secret_name" --version "$secret_version" --query value -o tsv)
+            else
+              sql_connection=$(az keyvault secret show --vault-name "$vault_name" --name "$secret_name" --query value -o tsv)
+            fi
+          fi
+
+          if [ -z "$sql_connection" ]; then
+            echo "### Backend deploy blocked by SQL secret resolution" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The live SQL connection string could not be resolved from $AZURE_WEBAPP_NAME." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Missing resolved SQL connection string::Could not resolve a usable SQL connection string for migrations."
             exit 1
           fi
 
@@ -192,4 +222,3 @@ jobs:
 
       - name: Smoke test API health
         run: curl --fail --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 "$API_HEALTH_URL"
-
