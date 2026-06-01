@@ -1,4 +1,4 @@
-﻿# Malta — History
+# Malta — History
 
 ## Core Context
 
@@ -63,4 +63,7 @@
 - Orchestration log: .squad/orchestration-log/2026-05-29T01:22:55.575Z-malta.md
 - Session log: .squad/log/2026-05-29T01:22:55.575Z-scribe-session.md
 - decisions.md size: 54039 bytes; inbox processed: 0; archival: none moved.
+
+
+- 2026-05-31T22:51:42.784-03:00: The live profile page missing an avatar block is not a conditional-render bug. Both origin/dev and origin/main still ship the older ProfilePage without any avatar summary section, file picker, or avatarUrl mapping, so the newer avatar UI was off-main local frontend work until I moved it onto a safe branch for review and promotion.
 
