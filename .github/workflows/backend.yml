@@ -124,6 +124,9 @@ jobs:
       AZURE_SQL_CONNECTION_STRING: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download migration bundle artifact
         uses: actions/download-artifact@v4
         with:
