@@ -23,6 +23,10 @@ public class Customer
 
     public string? Address { get; set; }
 
+    public string? AvatarPath { get; set; }
+
+    public string? AvatarContentType { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     // Navigation properties

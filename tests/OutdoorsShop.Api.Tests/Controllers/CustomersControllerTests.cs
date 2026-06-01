@@ -135,4 +135,86 @@ public class CustomersControllerTests
 
         result.Should().BeOfType<NotFoundObjectResult>();
     }
+
+    [Fact]
+    public async Task UploadAvatar_ReturnsBadRequest_WhenFileMissing()
+    {
+        var result = await CreateController("Customer", customerId: 42).UploadAvatar(42, null!);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task UploadAvatar_ReturnsBadRequest_WhenFileTypeIsInvalid()
+    {
+        var file = new FormFile(new MemoryStream([1, 2, 3]), 0, 3, "file", "avatar.txt")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "text/plain"
+        };
+
+        var result = await CreateController("Customer", customerId: 42).UploadAvatar(42, file);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        _customerService.Verify(
+            s => s.UploadAvatarAsync(It.IsAny<int>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<int?>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadAvatar_ReturnsBadRequest_WhenFileIsTooLarge()
+    {
+        var bytes = new byte[(2 * 1024 * 1024) + 1];
+        var file = new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", "avatar.png")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/png"
+        };
+
+        var result = await CreateController("Customer", customerId: 42).UploadAvatar(42, file);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        _customerService.Verify(
+            s => s.UploadAvatarAsync(It.IsAny<int>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<int?>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadAvatar_ReturnsUpdatedProfile_WhenRequestIsValid()
+    {
+        var dto = MakeCustomerDto(42);
+        dto.AvatarPath = "customers/42/avatar.png";
+        dto.AvatarContentType = "image/png";
+        dto.AvatarUrl = "https://test.blob.core.windows.net/customer-avatars/customers/42/avatar.png";
+
+        var file = new FormFile(new MemoryStream([1, 2, 3]), 0, 3, "file", "avatar.png")
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = "image/png"
+        };
+
+        _customerService
+            .Setup(s => s.UploadAvatarAsync(42, It.IsAny<Stream>(), "avatar.png", "image/png", false, 42))
+            .ReturnsAsync(OperationResult<CustomerDto>.Success(dto));
+
+        var result = await CreateController("Customer", customerId: 42).UploadAvatar(42, file);
+
+        result.Should().BeOfType<OkObjectResult>()
+            .Which.Value.Should().BeEquivalentTo(dto);
+    }
+
+    [Fact]
+    public async Task RemoveAvatar_ReturnsUpdatedProfile_WhenAvatarIsRemoved()
+    {
+        var dto = MakeCustomerDto(42);
+
+        _customerService
+            .Setup(s => s.RemoveAvatarAsync(42, false, 42))
+            .ReturnsAsync(OperationResult<CustomerDto>.Success(dto));
+
+        var result = await CreateController("Customer", customerId: 42).RemoveAvatar(42);
+
+        result.Should().BeOfType<OkObjectResult>()
+            .Which.Value.Should().BeEquivalentTo(dto);
+    }
 }

@@ -9,6 +9,8 @@ public interface ICustomerService
     Task<PagedResult<CustomerDto>> GetPagedAsync(int pageNumber, int pageSize);
     Task<OperationResult<CustomerDto>> GetByIdAsync(int id, bool isAdministrator, int? currentCustomerId);
     Task<OperationResult<CustomerDto>> UpdateAsync(int id, UpdateCustomerDto request, bool isAdministrator, int? currentCustomerId);
+    Task<OperationResult<CustomerDto>> UploadAvatarAsync(int id, Stream avatarStream, string fileName, string contentType, bool isAdministrator, int? currentCustomerId);
+    Task<OperationResult<CustomerDto>> RemoveAvatarAsync(int id, bool isAdministrator, int? currentCustomerId);
     Task<OperationResult> ChangePasswordAsync(string userId, ChangePasswordDto request);
     Task<OperationResult> SoftDeleteAsync(int id);
 }

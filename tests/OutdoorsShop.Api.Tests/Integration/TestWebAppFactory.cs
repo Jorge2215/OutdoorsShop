@@ -67,8 +67,12 @@ public class TestWebAppFactory : WebApplicationFactory<Program>
             var blobMock = new Mock<IBlobStorageService>();
             blobMock.Setup(b => b.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>()))
                 .ReturnsAsync("https://test.blob.core.windows.net/test/blob");
+            blobMock.Setup(b => b.UploadPublicAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>()))
+                .ReturnsAsync((string containerName, string blobName, Stream _, string _) => $"https://test.blob.core.windows.net/{containerName}/{blobName}");
             blobMock.Setup(b => b.GetSasUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan>()))
                 .ReturnsAsync("https://test.blob.core.windows.net/test/blob?sas=token");
+            blobMock.Setup(b => b.GetBlobUrl(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns((string containerName, string blobName) => $"https://test.blob.core.windows.net/{containerName}/{blobName}");
             blobMock.Setup(b => b.DeleteAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .Returns(Task.CompletedTask);
             blobMock.Setup(b => b.ExistsAsync(It.IsAny<string>(), It.IsAny<string>()))

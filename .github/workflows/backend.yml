@@ -66,6 +66,30 @@ jobs:
             echo "| $PASSED | $FAILED | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Install EF Core CLI
+        if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: dotnet tool install --global dotnet-ef --version 10.0.8
+
+      - name: Build migration bundle
+        if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef migrations bundle \
+            --project src/OutdoorsShop.Infrastructure/OutdoorsShop.Infrastructure.csproj \
+            --startup-project src/OutdoorsShop.Api/OutdoorsShop.Api.csproj \
+            --configuration Release \
+            --self-contained \
+            --runtime linux-x64 \
+            --output publish/efbundle
+
+      - name: Upload migration bundle artifact
+        if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-migration-bundle
+          path: publish/efbundle
+
       - name: Publish API artifact
         if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: dotnet publish src/OutdoorsShop.Api/OutdoorsShop.Api.csproj --configuration Release -r linux-x64 --self-contained false /p:UseAppHost=false --output publish/api
@@ -89,14 +113,21 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     env:
-      AZURE_WEBAPP_NAME: app-outdoors-api-dev
-      AZURE_RESOURCE_GROUP: rg-outdoors-dev
-      API_HEALTH_URL: https://app-outdoors-api-dev.azurewebsites.net/api/health
+      AZURE_WEBAPP_NAME: app-outdoors-api-prod
+      AZURE_RESOURCE_GROUP: rg-outdoors-prod
+      API_HEALTH_URL: https://app-outdoors-api-prod.azurewebsites.net/api/health
       AZURE_CLIENT_ID: c0fed59f-52ae-4a13-83e7-f89844c039a6
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_SQL_CONNECTION_STRING: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
 
     steps:
+      - name: Download migration bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: db-migration-bundle
+          path: publish
+
       - name: Download API publish artifact
         uses: actions/download-artifact@v4
         with:
@@ -110,14 +141,15 @@ jobs:
           [ -n "$AZURE_CLIENT_ID" ] || missing+=("AZURE_CLIENT_ID")
           [ -n "$AZURE_TENANT_ID" ] || missing+=("AZURE_TENANT_ID")
           [ -n "$AZURE_SUBSCRIPTION_ID" ] || missing+=("AZURE_SUBSCRIPTION_ID")
+          [ -n "$AZURE_SQL_CONNECTION_STRING" ] || missing+=("AZURE_SQL_CONNECTION_STRING")
 
           if [ ${#missing[@]} -gt 0 ]; then
             echo "### Backend deploy blocked by external Azure configuration" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Build and publish passed, but deployment cannot authenticate to Azure." >> "$GITHUB_STEP_SUMMARY"
+            echo "Build and packaging passed, but migration/deployment cannot proceed." >> "$GITHUB_STEP_SUMMARY"
             echo "Missing required configuration value(s): ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
             echo "Configure them in the 'prod' GitHub environment or as repository secrets, then rerun the backend workflow from main." >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=Missing Azure deployment configuration::Build and publish succeeded, but deployment is blocked until ${missing[*]} are configured for the 'prod' environment or repository."
+            echo "::error title=Missing Azure deployment configuration::Build and packaging succeeded, but migration/deployment is blocked until ${missing[*]} are configured for the 'prod' environment or repository."
             exit 1
           fi
 
@@ -127,6 +159,12 @@ jobs:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Apply EF Core migrations
+        shell: bash
+        run: |
+          chmod +x publish/efbundle
+          ./publish/efbundle --connection "$AZURE_SQL_CONNECTION_STRING"
 
       - name: Deploy API package
         run: az webapp deployment source config-zip --name "$AZURE_WEBAPP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --src publish/api.zip --timeout 600
