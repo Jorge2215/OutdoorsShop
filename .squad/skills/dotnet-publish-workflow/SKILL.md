@@ -14,3 +14,5 @@ Why: NETSDK1047 (runtime assets missing) is a common failure when restore and pu
 
 How to use:
 - Add to `.squad/skills/` and refer to it when updating `backend.yml` or similar workflows.
+- If dotnet ef migrations bundle uses a design-time DbContextFactory that insists on ConnectionStrings__DefaultConnection, give the bundle-build step a syntactically valid placeholder connection string so packaging does not depend on production secrets; keep real-secret validation in the deploy job.
+

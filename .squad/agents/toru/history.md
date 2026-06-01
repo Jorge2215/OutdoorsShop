@@ -129,3 +129,5 @@
 - Session log: .squad/log/2026-05-29T01:22:55.575Z-scribe-session.md
 - decisions.md size: 54039 bytes; inbox processed: 0; archival: none moved.
 
+
+- 2026-05-31T21:53:53.116-03:00 — Main avatar rollout: promoted the backend avatar API, additive EF migration, and backend workflow updates to main. Main workflow now targets pp-outdoors-api-prod / g-outdoors-prod and can build the EF bundle without a real database connection, but deploy run 26730246749 stopped at configuration validation because AZURE_SQL_CONNECTION_STRING is not configured for the prod environment/repository.
