@@ -113,15 +113,14 @@ jobs:
     if: github.ref_name == 'main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: build-and-test
     runs-on: ubuntu-latest
-    environment: prod
+    environment: dev
     env:
-      AZURE_WEBAPP_NAME: app-outdoors-api-prod
-      AZURE_RESOURCE_GROUP: rg-outdoors-prod
-      API_HEALTH_URL: https://app-outdoors-api-prod.azurewebsites.net/api/health
+      AZURE_WEBAPP_NAME: app-outdoors-api-dev
+      AZURE_RESOURCE_GROUP: rg-outdoors-dev
+      API_HEALTH_URL: https://app-outdoors-api-dev.azurewebsites.net/api/health
       AZURE_CLIENT_ID: c0fed59f-52ae-4a13-83e7-f89844c039a6
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      AZURE_SQL_CONNECTION_STRING: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
 
     steps:
       - name: Download migration bundle artifact
@@ -143,15 +142,14 @@ jobs:
           [ -n "$AZURE_CLIENT_ID" ] || missing+=("AZURE_CLIENT_ID")
           [ -n "$AZURE_TENANT_ID" ] || missing+=("AZURE_TENANT_ID")
           [ -n "$AZURE_SUBSCRIPTION_ID" ] || missing+=("AZURE_SUBSCRIPTION_ID")
-          [ -n "$AZURE_SQL_CONNECTION_STRING" ] || missing+=("AZURE_SQL_CONNECTION_STRING")
 
           if [ ${#missing[@]} -gt 0 ]; then
             echo "### Backend deploy blocked by external Azure configuration" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Build and packaging passed, but migration/deployment cannot proceed." >> "$GITHUB_STEP_SUMMARY"
+            echo "Build and packaging passed, but deployment cannot authenticate to Azure." >> "$GITHUB_STEP_SUMMARY"
             echo "Missing required configuration value(s): ${missing[*]}" >> "$GITHUB_STEP_SUMMARY"
-            echo "Configure them in the 'prod' GitHub environment or as repository secrets, then rerun the backend workflow from main." >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=Missing Azure deployment configuration::Build and packaging succeeded, but migration/deployment is blocked until ${missing[*]} are configured for the 'prod' environment or repository."
+            echo "Configure them in the repository or 'dev' GitHub environment, then rerun the backend workflow from main." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Missing Azure deployment configuration::Build and packaging succeeded, but deployment is blocked until ${missing[*]} are configured for the repository or 'dev' environment."
             exit 1
           fi
 
@@ -161,6 +159,27 @@ jobs:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve live SQL connection string
+        shell: bash
+        run: |
+          sql_connection=$(az webapp config appsettings list \
+            --name "$AZURE_WEBAPP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='ConnectionStrings__DefaultConnection'].value | [0]" \
+            -o tsv)
+
+          if [ -z "$sql_connection" ]; then
+            echo "### Backend deploy blocked by live app configuration" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The only live environment is missing app setting ConnectionStrings__DefaultConnection." >> "$GITHUB_STEP_SUMMARY"
+            echo "Restore that app setting on $AZURE_WEBAPP_NAME, then rerun the backend workflow from main." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Missing live SQL connection string::ConnectionStrings__DefaultConnection is not configured on $AZURE_WEBAPP_NAME."
+            exit 1
+          fi
+
+          echo "::add-mask::$sql_connection"
+          echo "AZURE_SQL_CONNECTION_STRING=$sql_connection" >> "$GITHUB_ENV"
 
       - name: Apply EF Core migrations
         shell: bash
@@ -173,5 +192,4 @@ jobs:
 
       - name: Smoke test API health
         run: curl --fail --retry 5 --retry-all-errors --retry-delay 10 --max-time 30 "$API_HEALTH_URL"
-
 
