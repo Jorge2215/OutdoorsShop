@@ -1,5 +1,5 @@
 import type { Customer, CustomerUpdateRequest } from '../types/customer'
-import { fetchWithAuth } from './client'
+import { fetchWithAuth, fetchWithAuthMultipart } from './client'
 
 interface RawCustomer {
   customerID: number
@@ -7,6 +7,7 @@ interface RawCustomer {
   email: string
   firstName: string
   lastName: string
+  avatarUrl?: string | null
   phone?: string | null
   address?: string | null
   isActive: boolean
@@ -19,6 +20,7 @@ function mapCustomer(raw: RawCustomer): Customer {
     firstName: raw.firstName,
     lastName: raw.lastName,
     email: raw.email,
+    avatarUrl: raw.avatarUrl ?? null,
     phone: raw.phone ?? '',
     address: raw.address ?? '',
     isActive: raw.isActive,
@@ -37,5 +39,16 @@ export const customersApi = {
     })
     return mapCustomer(response)
   },
+  async uploadAvatar(id: number, file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetchWithAuthMultipart<RawCustomer>(`/customers/${id}/avatar`, formData)
+    return mapCustomer(response)
+  },
+  async removeAvatar(id: number) {
+    const response = await fetchWithAuth<RawCustomer>(`/customers/${id}/avatar`, {
+      method: 'DELETE',
+    })
+    return mapCustomer(response)
+  },
 }
-

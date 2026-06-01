@@ -4,6 +4,7 @@ export interface Customer {
   firstName: string
   lastName: string
   email: string
+  avatarUrl: string | null
   phone: string
   address: string
   isActive: boolean
@@ -15,4 +16,3 @@ export interface CustomerUpdateRequest {
   phone: string
   address: string
 }
-
