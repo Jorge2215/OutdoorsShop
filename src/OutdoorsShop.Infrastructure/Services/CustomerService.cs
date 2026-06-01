@@ -10,12 +10,18 @@ namespace OutdoorsShop.Infrastructure.Services;
 
 public class CustomerService : ICustomerService
 {
+    private const string CustomerAvatarContainerName = "customer-avatars";
     private readonly ICustomerRepository _customerRepository;
+    private readonly IBlobStorageService _blobStorageService;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    public CustomerService(ICustomerRepository customerRepository, UserManager<ApplicationUser> userManager)
+    public CustomerService(
+        ICustomerRepository customerRepository,
+        IBlobStorageService blobStorageService,
+        UserManager<ApplicationUser> userManager)
     {
         _customerRepository = customerRepository;
+        _blobStorageService = blobStorageService;
         _userManager = userManager;
     }
 
@@ -48,8 +54,9 @@ public class CustomerService : ICustomerService
 
     public async Task<OperationResult<CustomerDto>> UpdateAsync(int id, UpdateCustomerDto request, bool isAdministrator, int? currentCustomerId)
     {
-        if (!isAdministrator && currentCustomerId != id)
-            return OperationResult<CustomerDto>.ForbiddenResult("You can only update your own customer profile.");
+        var authorizationFailure = ValidateProfileAccess(id, isAdministrator, currentCustomerId, "update");
+        if (authorizationFailure is not null)
+            return authorizationFailure;
 
         var customer = await _customerRepository.GetByIdAsync(id);
         if (customer is null)
@@ -60,6 +67,57 @@ public class CustomerService : ICustomerService
         customer.Name = string.Join(' ', new[] { customer.FirstName, customer.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim();
         customer.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
         customer.Address = string.IsNullOrWhiteSpace(request.Address) ? null : request.Address.Trim();
+
+        await _customerRepository.UpdateAsync(customer);
+        await _customerRepository.SaveChangesAsync();
+
+        return OperationResult<CustomerDto>.Success(MapToDto(customer));
+    }
+
+    public async Task<OperationResult<CustomerDto>> UploadAvatarAsync(int id, Stream avatarStream, string fileName, string contentType, bool isAdministrator, int? currentCustomerId)
+    {
+        var authorizationFailure = ValidateProfileAccess(id, isAdministrator, currentCustomerId, "update");
+        if (authorizationFailure is not null)
+            return authorizationFailure;
+
+        var customer = await _customerRepository.GetByIdAsync(id);
+        if (customer is null)
+            return OperationResult<CustomerDto>.NotFoundResult($"Customer {id} not found.");
+
+        var previousAvatarPath = customer.AvatarPath;
+        var avatarPath = $"customers/{id}/avatar{ResolveAvatarExtension(contentType)}";
+        await _blobStorageService.UploadPublicAsync(CustomerAvatarContainerName, avatarPath, avatarStream, contentType);
+
+        customer.AvatarPath = avatarPath;
+        customer.AvatarContentType = contentType;
+
+        await _customerRepository.UpdateAsync(customer);
+        await _customerRepository.SaveChangesAsync();
+
+        if (!string.IsNullOrWhiteSpace(previousAvatarPath) &&
+            !string.Equals(previousAvatarPath, avatarPath, StringComparison.OrdinalIgnoreCase))
+        {
+            await _blobStorageService.DeleteAsync(CustomerAvatarContainerName, previousAvatarPath);
+        }
+
+        return OperationResult<CustomerDto>.Success(MapToDto(customer));
+    }
+
+    public async Task<OperationResult<CustomerDto>> RemoveAvatarAsync(int id, bool isAdministrator, int? currentCustomerId)
+    {
+        var authorizationFailure = ValidateProfileAccess(id, isAdministrator, currentCustomerId, "update");
+        if (authorizationFailure is not null)
+            return authorizationFailure;
+
+        var customer = await _customerRepository.GetByIdAsync(id);
+        if (customer is null)
+            return OperationResult<CustomerDto>.NotFoundResult($"Customer {id} not found.");
+
+        if (!string.IsNullOrWhiteSpace(customer.AvatarPath))
+            await _blobStorageService.DeleteAsync(CustomerAvatarContainerName, customer.AvatarPath);
+
+        customer.AvatarPath = null;
+        customer.AvatarContentType = null;
 
         await _customerRepository.UpdateAsync(customer);
         await _customerRepository.SaveChangesAsync();
@@ -97,9 +155,10 @@ public class CustomerService : ICustomerService
         return OperationResult.Success();
     }
 
-    private static CustomerDto MapToDto(Customer customer)
+    private CustomerDto MapToDto(Customer customer)
     {
         var (firstName, lastName) = ResolveName(customer);
+        var hasAvatar = !string.IsNullOrWhiteSpace(customer.AvatarPath);
 
         return new CustomerDto
         {
@@ -110,7 +169,32 @@ public class CustomerService : ICustomerService
             LastName = lastName,
             Phone = customer.Phone,
             Address = customer.Address,
+            AvatarPath = hasAvatar ? customer.AvatarPath : null,
+            AvatarContentType = hasAvatar ? customer.AvatarContentType : null,
+            AvatarUrl = hasAvatar
+                ? _blobStorageService.GetBlobUrl(CustomerAvatarContainerName, customer.AvatarPath!)
+                : null,
             IsActive = customer.IsActive
+        };
+    }
+
+    private static OperationResult<CustomerDto>? ValidateProfileAccess(int id, bool isAdministrator, int? currentCustomerId, string action)
+    {
+        if (!isAdministrator && currentCustomerId != id)
+            return OperationResult<CustomerDto>.ForbiddenResult($"You can only {action} your own customer profile.");
+
+        return null;
+    }
+
+    private static string ResolveAvatarExtension(string contentType)
+    {
+        return contentType.ToLowerInvariant() switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/gif" => ".gif",
+            "image/webp" => ".webp",
+            _ => string.Empty
         };
     }
 

@@ -12,6 +12,9 @@ public class CustomerDto
     public string FullName => string.Join(' ', new[] { FirstName, LastName }.Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
     public string? Phone { get; set; }
     public string? Address { get; set; }
+    public string? AvatarPath { get; set; }
+    public string? AvatarContentType { get; set; }
+    public string? AvatarUrl { get; set; }
     public bool IsActive { get; set; }
 }
 

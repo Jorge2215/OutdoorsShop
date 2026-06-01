@@ -18,18 +18,7 @@ public class BlobStorageService : IBlobStorageService
     {
         var ext = Path.GetExtension(fileName);
         var blobName = $"products/{productId}/{Guid.NewGuid()}{ext}";
-        const string containerName = "product-images";
-
-        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
-        await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
-
-        var blobClient = containerClient.GetBlobClient(blobName);
-        await blobClient.UploadAsync(imageStream, new BlobUploadOptions
-        {
-            HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
-        });
-
-        return blobClient.Uri.ToString();
+        return await UploadPublicAsync("product-images", blobName, imageStream, contentType);
     }
 
     public async Task<string> UploadAsync(string containerName, string blobName, Stream content, string contentType)
@@ -38,6 +27,21 @@ public class BlobStorageService : IBlobStorageService
         await containerClient.CreateIfNotExistsAsync(PublicAccessType.None);
 
         var blobClient = containerClient.GetBlobClient(blobName);
+        await blobClient.UploadAsync(content, new BlobUploadOptions
+        {
+            HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
+        });
+
+        return blobClient.Uri.ToString();
+    }
+
+    public async Task<string> UploadPublicAsync(string containerName, string blobName, Stream content, string contentType)
+    {
+        var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+        await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+
+        var blobClient = containerClient.GetBlobClient(blobName);
+        await blobClient.DeleteIfExistsAsync();
         await blobClient.UploadAsync(content, new BlobUploadOptions
         {
             HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
@@ -78,4 +82,7 @@ public class BlobStorageService : IBlobStorageService
         var sasUri = blobClient.GenerateSasUri(sasBuilder);
         return Task.FromResult(sasUri.ToString());
     }
+
+    public string GetBlobUrl(string containerName, string blobName)
+        => _blobServiceClient.GetBlobContainerClient(containerName).GetBlobClient(blobName).Uri.ToString();
 }

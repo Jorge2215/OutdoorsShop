@@ -82,6 +82,14 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             .HasMaxLength(500);
 
         builder.Entity<Customer>()
+            .Property(c => c.AvatarPath)
+            .HasMaxLength(500);
+
+        builder.Entity<Customer>()
+            .Property(c => c.AvatarContentType)
+            .HasMaxLength(255);
+
+        builder.Entity<Customer>()
             .HasIndex(c => c.UserId)
             .IsUnique();
 

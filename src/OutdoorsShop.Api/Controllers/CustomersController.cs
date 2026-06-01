@@ -13,6 +13,15 @@ namespace OutdoorsShop.Api.Controllers;
 [Produces("application/json")]
 public class CustomersController : ControllerBase
 {
+    private static readonly HashSet<string> AllowedAvatarContentTypes =
+    [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp"
+    ];
+
+    private const long MaxAvatarFileSizeBytes = 2 * 1024 * 1024;
     private readonly ICustomerService _customerService;
 
     public CustomersController(ICustomerService customerService)
@@ -47,6 +56,45 @@ public class CustomersController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] UpdateCustomerDto request)
     {
         var result = await _customerService.UpdateAsync(id, request, User.IsInRole("Administrator"), GetCurrentCustomerId());
+        return ToActionResult(result);
+    }
+
+    [HttpPost("{id:int}/avatar")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(CustomerDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UploadAvatar(int id, IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "No avatar file uploaded." });
+
+        if (!AllowedAvatarContentTypes.Contains(file.ContentType))
+            return BadRequest(new { message = "Invalid avatar file type. Allowed types: jpg, jpeg, png, gif, webp." });
+
+        if (file.Length > MaxAvatarFileSizeBytes)
+            return BadRequest(new { message = "Avatar file size exceeds the 2 MB limit." });
+
+        using var stream = file.OpenReadStream();
+        var result = await _customerService.UploadAvatarAsync(
+            id,
+            stream,
+            file.FileName,
+            file.ContentType,
+            User.IsInRole("Administrator"),
+            GetCurrentCustomerId());
+
+        return ToActionResult(result);
+    }
+
+    [HttpDelete("{id:int}/avatar")]
+    [ProducesResponseType(typeof(CustomerDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveAvatar(int id)
+    {
+        var result = await _customerService.RemoveAvatarAsync(id, User.IsInRole("Administrator"), GetCurrentCustomerId());
         return ToActionResult(result);
     }
 
